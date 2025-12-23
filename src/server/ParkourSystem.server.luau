@@ -5,36 +5,95 @@ local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 
 -- Configuration
-local TARGET_POS = Vector3.new(400, 150, 400) -- Dónde está la isla de lava
 local BLOCK_SIZE = Vector3.new(10, 1, 10)
 local CLEANUP_TIME = 5 -- Tiempo antes de borrar bloques
 local LOBBY_RADIUS = 13 -- Un poquito más del borde real (12) para dar margen
 
+local LEVEL_CONFIGS = {
+	{ Position = Vector3.new(0, 20, 100), Name = "Level1", Color = BrickColor.new("Bright green") },
+	{ Position = Vector3.new(50, 40, 200), Name = "Level2", Color = BrickColor.new("Bright yellow") },
+	{ Position = Vector3.new(0, 60, 300), Name = "Level3", Color = BrickColor.new("Bright orange") },
+	{ Position = Vector3.new(-50, 80, 400), Name = "Level4", Color = BrickColor.new("Bright red") },
+}
+
 -- Player Data
 local playerPaths = {}
+local playerProgress = {} -- Tracks current target level index for each player
+local levelParts = {} -- Stores the actual Part instances for levels
 
--- 1. Create Destination (Lava Island)
-local function createLavaIsland()
-	if Workspace:FindFirstChild("LavaIsland") then return end
+-- Forward declarations
+local spawnNextBlock
+local setupBlockEvents
 
-	local island = Instance.new("Part")
-	island.Name = "LavaIsland"
-	island.Size = Vector3.new(30, 2, 30)
-	island.Position = TARGET_POS
-	island.Anchored = true
-	island.Material = Enum.Material.CrackedLava
-	island.BrickColor = BrickColor.new("Bright orange")
-	island.Parent = Workspace
+-- 1. Create Levels (Waypoints)
+local function createLevels()
+	for i, config in ipairs(LEVEL_CONFIGS) do
+		local existing = Workspace:FindFirstChild(config.Name)
+		if not existing then
+			local platform = Instance.new("Part")
+			platform.Name = config.Name
+			platform.Size = Vector3.new(20, 2, 20)
+			platform.Position = config.Position
+			platform.Anchored = true
+			platform.Material = Enum.Material.Neon
+			platform.BrickColor = config.Color
+			platform.Parent = Workspace
 
-	local fire = Instance.new("Fire")
-	fire.Size = 10
-	fire.Parent = island
+			-- Add level number indicator (optional but helpful)
+			local bb = Instance.new("BillboardGui")
+			bb.Size = UDim2.new(0, 100, 0, 50)
+			bb.StudsOffset = Vector3.new(0, 5, 0)
+			bb.AlwaysOnTop = true
+			bb.Parent = platform
 
-	local light = Instance.new("PointLight")
-	light.Color = Color3.fromRGB(255, 100, 0)
-	light.Range = 60
-	light.Brightness = 3
-	light.Parent = island
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.new(1, 0, 1, 0)
+			label.BackgroundTransparency = 1
+			label.Text = config.Name
+			label.TextColor3 = Color3.new(1, 1, 1)
+			label.TextScaled = true
+			label.Parent = bb
+
+			levelParts[i] = platform
+		else
+			levelParts[i] = existing
+		end
+
+		-- Setup Touch for Level Progression
+		levelParts[i].Touched:Connect(function(hit)
+			local player = Players:GetPlayerFromCharacter(hit.Parent)
+			if player then
+				local currentTarget = playerProgress[player]
+
+				-- If player reached their target level
+				if currentTarget == i then
+					-- Advance to next level
+					if i < #LEVEL_CONFIGS then
+						playerProgress[player] = i + 1
+						print(player.Name .. " Reached " .. config.Name .. "! Next Target: Level " .. (i + 1))
+
+						-- CONTINUE PATH GENERATION
+						-- Treat the Level Platform as the "LastBlock" to spawn the next segment
+						local pathData = playerPaths[player]
+						if pathData then
+							-- Ensure we don't spawn multiple branches from the level if touched multiple times
+							-- We can check if the LastBlock is already ahead of the level, but simple re-assignment is safer
+							-- actually, we should just spawn the next block immediately.
+
+							pathData.LastBlock = levelParts[i]
+							local nextBlock = spawnNextBlock(player, levelParts[i])
+							pathData.LastBlock = nextBlock
+							setupBlockEvents(player, nextBlock)
+						end
+
+					else
+						print(player.Name .. " COMPLETED THE COURSE!")
+						-- Maybe reset or just let them chill
+					end
+				end
+			end
+		end)
+	end
 end
 
 -- Limpieza
@@ -47,18 +106,62 @@ local function cleanupPlayerPath(player)
 		end
 	end
 	playerPaths[player] = nil
+	playerProgress[player] = nil
 end
 
 -- 2. Spawn Next Block Logic
-local function spawnNextBlock(player, currentBlock)
+function spawnNextBlock(player, currentBlock)
+	local targetIndex = playerProgress[player] or 1
+	-- Safety check: if finished or invalid, default to last level
+	if targetIndex > #LEVEL_CONFIGS then
+		targetIndex = #LEVEL_CONFIGS
+	end
+
+	local targetPos = LEVEL_CONFIGS[targetIndex].Position
 	local startPos = currentBlock.Position
-	local dirToTarget = (TARGET_POS - startPos).Unit
-	local horizontalDir = Vector3.new(dirToTarget.X, 0, dirToTarget.Z).Unit
+
+	-- Calculate direction
+	local dirToTarget = (targetPos - startPos)
+	local distToTarget = dirToTarget.Magnitude
+
+	-- Normalized direction
+	local unitDir = Vector3.new(0,0,1) -- Default backup
+	if distToTarget > 0.1 then
+		unitDir = dirToTarget.Unit
+	end
+
+	local horizontalDir = Vector3.new(unitDir.X, 0, unitDir.Z)
+	if horizontalDir.Magnitude > 0.1 then
+		horizontalDir = horizontalDir.Unit
+	else
+		horizontalDir = Vector3.new(0,0,1) -- Fallback
+	end
+
+	-- Height Difference
+	local heightDiffToTarget = targetPos.Y - startPos.Y
 
 	local forwardDist = math.random(10, 14) 
-	local heightDiff = math.random(-1, 4) 
+	local blockHeightDiff = 0 -- Default
 
-	local newPos = startPos + (horizontalDir * forwardDist) + Vector3.new(0, heightDiff, 0)
+	-- HEIGHT CORRECTION LOGIC
+	-- If target is much higher (> 10 studs), force upward steps
+	if heightDiffToTarget > 15 then
+		blockHeightDiff = math.random(2, 5) -- Go up!
+	elseif heightDiffToTarget < -15 then
+		blockHeightDiff = math.random(-5, -2) -- Go down!
+	else
+		-- Normal variation
+		blockHeightDiff = math.random(-1, 4)
+	end
+
+	-- PRECISION FIX: If target is far, prioritize forward distance.
+	-- The logic naturally does this because `horizontalDir` points to the target.
+	-- But we can tweak `forwardDist` if we are getting close.
+	if distToTarget < 20 then
+		forwardDist = math.min(forwardDist, distToTarget) -- Don't overshoot too much
+	end
+
+	local newPos = startPos + (horizontalDir * forwardDist) + Vector3.new(0, blockHeightDiff, 0)
 
 	local block = Instance.new("Part")
 	block.Name = player.Name .. "_PathBlock"
@@ -82,7 +185,7 @@ local function spawnNextBlock(player, currentBlock)
 	return block
 end
 
-local function setupBlockEvents(player, block)
+function setupBlockEvents(player, block)
 	local hasTriggeredNext = false
 
 	block.Touched:Connect(function(hit)
@@ -109,8 +212,12 @@ local function startPath(player)
 	
 	if playerPaths[player] then return end -- Ya tiene camino
 
-	local dirToLava = (TARGET_POS - hrp.Position).Unit
-	local horizontalDir = Vector3.new(dirToLava.X, 0, dirToLava.Z).Unit
+	-- Initialize Progress
+	playerProgress[player] = 1
+	local firstTargetPos = LEVEL_CONFIGS[1].Position
+
+	local dirToTarget = (firstTargetPos - hrp.Position).Unit
+	local horizontalDir = Vector3.new(dirToTarget.X, 0, dirToTarget.Z).Unit
 
 	-- Aparece justo enfrente
 	local spawnPos = hrp.Position + (horizontalDir * 8) - Vector3.new(0, 4, 0)
@@ -142,7 +249,7 @@ local function startPath(player)
 	hrp.CFrame = block.CFrame + Vector3.new(0, 3, 0)
 	hrp.Velocity = Vector3.new(0,0,0)
 	
-	print("🚀 Parkour iniciado para: " .. player.Name)
+	print("🚀 Parkour iniciado para: " .. player.Name .. " -> Objetivo: Level 1")
 end
 
 -- Gestión de Jugadores
@@ -195,4 +302,4 @@ Players.PlayerRemoving:Connect(function(player)
 	cleanupPlayerPath(player)
 end)
 
-createLavaIsland()
+createLevels()
