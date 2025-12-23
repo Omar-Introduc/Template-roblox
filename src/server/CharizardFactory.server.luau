@@ -42,6 +42,7 @@ local function generateCharizard(templates)
 	-- Main Torso (Root)
 	local torso = createVoxel("Torso", Vector3.new(3.5, 4.5, 3), COLORS.Orange, model)
 	torso.Transparency = 0
+	torso.Anchored = true -- Fix: Prevent falling
 	model.PrimaryPart = torso
 
 	-- Belly

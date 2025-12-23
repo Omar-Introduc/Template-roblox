@@ -160,8 +160,8 @@ local function setupGameEnvironment()
 	
 	-- Bloom para "brillo" suave
 	local bloom = Instance.new("BloomEffect", Lighting)
-	bloom.Intensity = 0.4
-	bloom.Threshold = 0.8
+	bloom.Intensity = 0.2
+	bloom.Threshold = 0.95
 	
 	print("✨ Entorno listo (Estilo Tokyo). ¡A saltar!")
 end

@@ -45,27 +45,29 @@ local function createMasterSakuraTree(templates)
 	-- 1. Zen Garden Base
 	local groundGroup = Instance.new("Model", model)
 	groundGroup.Name = "ZenGarden"
-	-- Base grass
-	box("GrassBase", Vector3.new(16, 1, 16), Vector3.new(0, -5, 0), COLORS.Grass, groundGroup)
+	-- Base grass (Scaled to 30 as requested)
+	box("GrassBase", Vector3.new(30, 2, 30), Vector3.new(0, -5, 0), COLORS.Grass, groundGroup)
 	-- Stones
 	local random = Random.new()
-	for i = 1, 6 do
-		local stonePos = Vector3.new(random:NextNumber(-5, 5), -5, random:NextNumber(-5, 5))
-		box("ZenStone", Vector3.new(1.5, 1.1, 1.5), stonePos, COLORS.Stone, groundGroup)
+	for i = 1, 8 do
+		local stonePos = Vector3.new(random:NextNumber(-12, 12), -4.5, random:NextNumber(-12, 12))
+		box("ZenStone", Vector3.new(2.5, 1.5, 2.5), stonePos, COLORS.Stone, groundGroup)
 	end
 
-	-- 2. TRUNK (Organic Voxel Curve)
+	-- 2. TRUNK (Organic Voxel Curve - SCALED UP)
 	local trunkGroup = Instance.new("Model", model)
 	trunkGroup.Name = "Trunk"
 	
-	local _t1 = box("Trunk1", Vector3.new(2, 4, 2), Vector3.new(0, -2, 0), COLORS.Wood, trunkGroup)
-	local _t2 = box("Trunk2", Vector3.new(1.8, 3, 1.8), Vector3.new(0.2, 1, 0.2), COLORS.Wood, trunkGroup, Vector3.new(0, 0, -5))
-	local _t3 = box("Trunk3", Vector3.new(1.5, 3, 1.5), Vector3.new(0.5, 3.5, 0.5), COLORS.Wood, trunkGroup, Vector3.new(0, 0, -11))
+	-- Base Trunk (Thicker and Taller)
+	local _t1 = box("Trunk1", Vector3.new(4, 8, 4), Vector3.new(0, 0, 0), COLORS.Wood, trunkGroup)
+	-- Mid Trunk
+	local _t2 = box("Trunk2", Vector3.new(3, 6, 3), Vector3.new(0.5, 6, 0.5), COLORS.Wood, trunkGroup, Vector3.new(0, 0, -5))
+	-- Top Trunk
+	local _t3 = box("Trunk3", Vector3.new(2, 6, 2), Vector3.new(1, 11, 1), COLORS.Wood, trunkGroup, Vector3.new(0, 0, -10))
 
-	-- 3. BRANCHES
-	local _branchL = box("BranchL", Vector3.new(1, 4, 1), Vector3.new(-2, 3, 0), COLORS.Wood, trunkGroup, Vector3.new(0, 0, 45))
-	local _branchR = box("BranchR", Vector3.new(0.8, 3.5, 0.8), Vector3.new(2, 4, 0.5), COLORS.Wood, trunkGroup, Vector3.new(0, 0, -35))
-	local _branchR2 = box("BranchR2", Vector3.new(0.8, 3.5, 0.8), Vector3.new(1, 4, -1.5), COLORS.Wood, trunkGroup, Vector3.new(-35, 0, 0))
+	-- 3. BRANCHES (Scaled Positions)
+	local _branchL = box("BranchL", Vector3.new(2, 6, 2), Vector3.new(-3, 8, 1), COLORS.Wood, trunkGroup, Vector3.new(0, 0, 45))
+	local _branchR = box("BranchR", Vector3.new(1.5, 5, 1.5), Vector3.new(3, 9, 1), COLORS.Wood, trunkGroup, Vector3.new(0, 0, -35))
 
 	-- 4. FOLLIAGE (Voxel Cloud Clusters)
 	local foliageGroup = Instance.new("Model", model)
@@ -84,30 +86,28 @@ local function createMasterSakuraTree(templates)
 		light.Parent = leaf
 	end
 
-	-- Distribution as per references
-	createCluster(0, 6, 0, 3.5, COLORS.Sakura1)
-	createCluster(1, 7, 1, 2.5, COLORS.Sakura2)
-	createCluster(-1, 6.5, -1, 3, COLORS.Sakura3)
+	-- Distribution Scaled Up to Y ~12-18
+	-- Main Canopy
+	createCluster(1, 16, 1, 6, COLORS.Sakura1)
+	createCluster(0, 15, -2, 5, COLORS.Sakura2)
+	createCluster(-1, 16, 2, 5.5, COLORS.Sakura3)
 
-	createCluster(-3.5, 4.5, 0, 2.8, COLORS.Sakura2)
-	createCluster(-4.5, 5.5, 1, 2, COLORS.Sakura1)
-	createCluster(-2.5, 3.5, -1.5, 2.2, COLORS.Sakura3)
+	-- Branch Canopy Left
+	createCluster(-5, 12, 1, 4.5, COLORS.Sakura2)
+	createCluster(-6, 13, 2, 3.5, COLORS.Sakura1)
 
-	createCluster(3.5, 5, 0.5, 3, COLORS.Sakura1)
-	createCluster(4.5, 4, -1, 2.2, COLORS.Sakura3)
-	createCluster(2.5, 6, 2, 2.5, COLORS.Sakura2)
-
-	createCluster(0, 5, 3, 2.5, COLORS.Sakura2)
-	createCluster(0.5, 5.5, -3, 2.8, COLORS.Sakura1)
+	-- Branch Canopy Right
+	createCluster(5, 13, 1, 4.5, COLORS.Sakura1)
+	createCluster(4, 12, -2, 4, COLORS.Sakura3)
 
 	-- 5. PETAL RAIN (Voxel Particle system)
 	local petalEmitterPart = Instance.new("Part")
 	petalEmitterPart.Name = "PetalEmitter"
-	petalEmitterPart.Size = Vector3.new(15, 1, 15)
+	petalEmitterPart.Size = Vector3.new(25, 1, 25)
 	petalEmitterPart.Transparency = 1
 	petalEmitterPart.Anchored = true
 	petalEmitterPart.CanCollide = false
-	petalEmitterPart.Position = Vector3.new(0, 15, 0)
+	petalEmitterPart.Position = Vector3.new(0, 25, 0)
 	petalEmitterPart.Parent = model
 
 	local petalEmitter = Instance.new("ParticleEmitter")

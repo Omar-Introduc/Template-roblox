@@ -14,14 +14,28 @@ print("🔥 CharizardVisuals: Initialized. Watching for " .. TAG_NAME)
 local function setupCharizardVisuals(model)
 	print("🔥 CharizardVisuals: Found new Charivoxel to animate!")
 	
-	local neckWeld = model:FindFirstChild("Neck"):WaitForChild("Motor6D")
-	local jawWeld = model:FindFirstChild("Jaw"):WaitForChild("Motor6D")
-	local tail1Weld = model:FindFirstChild("Tail1"):WaitForChild("Motor6D")
-	local tail2Weld = model:FindFirstChild("Tail2"):WaitForChild("Motor6D")
-	local tailTipWeld = model:FindFirstChild("TailTip"):WaitForChild("Motor6D")
-	local wingLWeld = model:FindFirstChild("WingPivotL"):WaitForChild("Motor6D")
-	local wingRWeld = model:FindFirstChild("WingPivotR"):WaitForChild("Motor6D")
-	local head = model:FindFirstChild("Head")
+	local neck = model:WaitForChild("Neck")
+	local neckWeld = neck:WaitForChild("Motor6D")
+	
+	local jaw = model:WaitForChild("Jaw")
+	local jawWeld = jaw:WaitForChild("Motor6D")
+	
+	local tail1 = model:WaitForChild("Tail1")
+	local tail1Weld = tail1:WaitForChild("Motor6D")
+	
+	local tail2 = model:WaitForChild("Tail2")
+	local tail2Weld = tail2:WaitForChild("Motor6D")
+	
+	local tailTip = model:WaitForChild("TailTip")
+	local tailTipWeld = tailTip:WaitForChild("Motor6D")
+	
+	local wingPivotL = model:WaitForChild("WingPivotL")
+	local wingLWeld = wingPivotL:WaitForChild("Motor6D")
+	
+	local wingPivotR = model:WaitForChild("WingPivotR")
+	local wingRWeld = wingPivotR:WaitForChild("Motor6D")
+	
+	local head = model:WaitForChild("Head", 5) -- Timeout just in case
 
 	-- Initial Offsets
 	local neckC0 = CFrame.new(0, 2.2, 0.2) * CFrame.Angles(math.rad(10), 0, 0)
@@ -62,7 +76,7 @@ local function setupCharizardVisuals(model)
 			if dist < 40 then
 				local targetPos = player.Character.HumanoidRootPart.Position
 				local lookCFrame = CFrame.lookAt(head.Position, targetPos)
-				local relativeLook = head.Parent.CFrame:Inverse() * lookCFrame
+				local relativeLook = head.Parent:GetPivot():Inverse() * lookCFrame
 				
 				-- Clamp angles to prevent breaking neck
 				local rx, ry, rz = relativeLook:ToOrientation()
