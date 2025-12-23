@@ -2,7 +2,6 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local CollectionService = game:GetService("CollectionService")
-local RunService = game:GetService("RunService")
 
 -- 1. Modular Spiral Level Layout
 local LEVEL_CONFIGS = {
@@ -13,7 +12,6 @@ local LEVEL_CONFIGS = {
 }
 
 -- 2. Dynamic Difficulty System
--- Updated to use 'Variance' instead of Height, controlling X/Z offset
 local DIFFICULTY_SETTINGS = {
 	[1] = { MinDist = 8, MaxDist = 12, Variance = 4, Time = 5 },   -- Easy
 	[2] = { MinDist = 10, MaxDist = 14, Variance = 6, Time = 4.5 }, -- Medium
@@ -22,67 +20,50 @@ local DIFFICULTY_SETTINGS = {
 }
 
 local BLOCK_SIZE = Vector3.new(10, 1, 10)
-local LOBBY_RADIUS = 15
 
 -- State
-local playerPaths = {}
-local playerProgress = {}
-local levelParts = {}
+local playerPaths = {} -- player -> { LastBlock = Part, AllBlocks = {Part, ...} }
+local playerProgress = {} -- player -> Highest Level Index Reached (0 = Lobby, 1 = Level1, etc.)
+local levelParts = {} -- levelIndex -> Part
 
 -- Forward declarations
 local spawnNextBlock
 local setupBlockEvents
+local startPath
+local cleanupPlayerPath
 
 --------------------------------------------------------------------------------
--- LEVEL SETUP
+-- VISUALS: Countdown Timer
 --------------------------------------------------------------------------------
 
-local function createLevels()
-	for i, config in ipairs(LEVEL_CONFIGS) do
-		local existing = Workspace:FindFirstChild(config.Name)
-		local platform
+local function createCountdown(block, duration)
+	local surfaceGui = Instance.new("SurfaceGui")
+	surfaceGui.Face = Enum.NormalId.Top
+	surfaceGui.Parent = block
 
-		if existing then
-			platform = existing
-			platform.Position = config.Position
-			platform.BrickColor = config.Color
-		else
-			platform = Instance.new("Part")
-			platform.Name = config.Name
-			platform.Size = Vector3.new(20, 2, 20)
-			platform.Position = config.Position
-			platform.Anchored = true
-			platform.Material = Enum.Material.Neon
-			platform.BrickColor = config.Color
-			platform.Parent = Workspace
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.TextColor3 = Color3.new(1, 0, 0) -- Red
+	label.TextStrokeTransparency = 0.5
+	label.Text = tostring(duration) .. ".0"
+	label.Parent = surfaceGui
+
+	task.spawn(function()
+		local remaining = duration
+		while remaining > 0 do
+			if not block.Parent then break end
+			label.Text = string.format("%.1f", remaining)
+			task.wait(0.1)
+			remaining -= 0.1
 		end
 
-		levelParts[i] = platform
-
-		-- Checkpoint Logic
-		platform.Touched:Connect(function(hit)
-			local player = Players:GetPlayerFromCharacter(hit.Parent)
-			if player then
-				local currentTarget = playerProgress[player] or 1
-
-				-- Checkpoint Logic: Update target to X+1 when touching Level X
-				if currentTarget == i then
-					if i < #LEVEL_CONFIGS then
-						playerProgress[player] = i + 1
-						print(player.Name .. " reached " .. config.Name .. "! Next Target: Level " .. (i + 1))
-
-						local pathData = playerPaths[player]
-						if pathData then
-							pathData.LastBlock = platform
-							spawnNextBlock(player, platform)
-						end
-					else
-						print(player.Name .. " COMPLETED THE SPIRAL!")
-					end
-				end
-			end
-		end)
-	end
+		if block and block.Parent then
+			block:Destroy()
+		end
+	end)
 end
 
 --------------------------------------------------------------------------------
@@ -90,8 +71,19 @@ end
 --------------------------------------------------------------------------------
 
 function spawnNextBlock(player, currentBlock)
-	local targetIndex = playerProgress[player] or 1
-	if targetIndex > #LEVEL_CONFIGS then targetIndex = #LEVEL_CONFIGS end
+	-- Target Logic:
+	-- If playerProgress is 0 (Lobby), we want to go to Level 1 (Index 1).
+	-- If playerProgress is 1 (Level 1), we want to go to Level 2 (Index 2).
+	-- So targetIndex = (progress or 0) + 1.
+
+	local currentLevel = playerProgress[player] or 0
+	local targetIndex = currentLevel + 1
+
+	if targetIndex > #LEVEL_CONFIGS then
+		-- Reached end? Stop spawning or loop?
+		-- For safety, just target the last level or stop.
+		return nil
+	end
 
 	local targetConfig = LEVEL_CONFIGS[targetIndex]
 	local diff = DIFFICULTY_SETTINGS[targetIndex] or DIFFICULTY_SETTINGS[1]
@@ -120,7 +112,6 @@ function spawnNextBlock(player, currentBlock)
 	local idealPos = startPos + (moveDir * jumpDist)
 
 	-- 3. Sub-plane Probability: Apply controlled random Offset (Variance) on X/Z axis
-
 	local varAmount = diff.Variance
 	local offsetX = (math.random() - 0.5) * 2 * varAmount
 	local offsetZ = (math.random() - 0.5) * 2 * varAmount
@@ -137,7 +128,6 @@ function spawnNextBlock(player, currentBlock)
 
 	-- FIX: Flat Platforms (No Tilt)
 	-- Construct CFrame looking at the target's X/Z but keeping current Y (level)
-	-- This ensures Pitch and Roll are 0.
 	local lookAtPoint = Vector3.new(targetPos.X, finalPos.Y, targetPos.Z)
 	block.CFrame = CFrame.lookAt(finalPos, lookAtPoint)
 
@@ -150,8 +140,8 @@ function spawnNextBlock(player, currentBlock)
 
 	block.Parent = Workspace
 
-	-- Disappearing Platforms
-	Debris:AddItem(block, diff.Time)
+	-- Visual Countdown instead of just Debris
+	createCountdown(block, diff.Time)
 
 	-- Tracking
 	if playerPaths[player] then
@@ -173,98 +163,173 @@ function setupBlockEvents(player, block)
 			if pathData and pathData.LastBlock == block then
 				triggered = true
 				local nextBlock = spawnNextBlock(player, block)
-				pathData.LastBlock = nextBlock
+				if nextBlock then
+					pathData.LastBlock = nextBlock
+				else
+					-- Reached destination or stop
+					pathData.LastBlock = nil
+				end
 			end
 		end
 	end)
+end
+
+function startPath(player, startPad)
+	cleanupPlayerPath(player) -- Ensure clean slate
+
+	playerPaths[player] = {
+		LastBlock = nil,
+		AllBlocks = {}
+	}
+
+	-- Spawn first block from the pad
+	local firstBlock = spawnNextBlock(player, startPad)
+
+	if firstBlock then
+		playerPaths[player].LastBlock = firstBlock
+	end
+end
+
+--------------------------------------------------------------------------------
+-- LEVEL & PAD SETUP
+--------------------------------------------------------------------------------
+
+local function createStarterPads()
+	-- Lobby -> Level 1 (Index 0 -> 1)
+	local lobbyPart = Workspace:FindFirstChild("Lobby")
+	if not lobbyPart then
+		lobbyPart = Instance.new("Part")
+		lobbyPart.Name = "Lobby"
+		lobbyPart.Size = Vector3.new(30, 1, 30)
+		lobbyPart.Position = Vector3.new(0, 0, 0)
+		lobbyPart.Anchored = true
+		lobbyPart.BrickColor = BrickColor.new("Dark stone grey")
+		lobbyPart.Material = Enum.Material.Concrete
+		lobbyPart.Parent = Workspace
+	end
+
+	-- Helper to create a pad
+	local function makePad(sourcePart, targetPos, levelIndexForUnlock)
+		local pad = Instance.new("Part")
+		pad.Name = "StarterPad_Level" .. (levelIndexForUnlock + 1) -- e.g. Pad Level 1 (at lobby)
+		pad.Size = Vector3.new(4, 1, 4)
+		pad.BrickColor = BrickColor.new("Gold")
+		pad.Material = Enum.Material.Neon
+		pad.Anchored = true
+
+		-- Position at edge facing target
+		local dir = (targetPos - sourcePart.Position).Unit
+		-- Approximate edge distance (Half size - padding)
+		local distFromCenter = (sourcePart.Size.X / 2) - 2.5
+
+		pad.Position = sourcePart.Position + (dir * distFromCenter) + Vector3.new(0, 0.6, 0)
+		pad.CFrame = CFrame.lookAt(pad.Position, Vector3.new(targetPos.X, pad.Position.Y, targetPos.Z))
+
+		pad.Parent = Workspace
+
+		local debounce = false
+		pad.Touched:Connect(function(hit)
+			if debounce then return end
+			local player = Players:GetPlayerFromCharacter(hit.Parent)
+			if player then
+				local progress = playerProgress[player] or 0
+
+				-- Unlock logic: If at Lobby (0), pad requires progress >= 0. OK.
+				-- If at Level 1 (1), pad requires progress >= 1. OK.
+				if progress >= levelIndexForUnlock then
+					debounce = true
+					startPath(player, pad)
+					task.wait(1)
+					debounce = false
+				end
+			end
+		end)
+	end
+
+	-- 1. Lobby -> Level 1 (Index 0 unlock)
+	makePad(lobbyPart, LEVEL_CONFIGS[1].Position, 0)
+	
+	-- 2. Level i -> Level i+1 (Index i unlock)
+	for i, config in ipairs(LEVEL_CONFIGS) do
+		if i < #LEVEL_CONFIGS then
+			local nextConfig = LEVEL_CONFIGS[i+1]
+			local sourcePart = levelParts[i]
+			if sourcePart then
+				makePad(sourcePart, nextConfig.Position, i)
+			end
+		end
+	end
+end
+
+local function createLevels()
+	for i, config in ipairs(LEVEL_CONFIGS) do
+		local existing = Workspace:FindFirstChild(config.Name)
+		local platform
+
+		if existing then
+			platform = existing
+			platform.Position = config.Position
+			platform.BrickColor = config.Color
+		else
+			platform = Instance.new("Part")
+			platform.Name = config.Name
+			platform.Size = Vector3.new(20, 2, 20)
+			platform.Position = config.Position
+			platform.Anchored = true
+			platform.Material = Enum.Material.Neon
+			platform.BrickColor = config.Color
+			platform.Parent = Workspace
+		end
+
+		levelParts[i] = platform
+
+		-- Checkpoint Logic
+		platform.Touched:Connect(function(hit)
+			local player = Players:GetPlayerFromCharacter(hit.Parent)
+			if player then
+				-- Just update progress, DO NOT auto-start path
+				local currentProgress = playerProgress[player] or 0
+				if i > currentProgress then
+					playerProgress[player] = i
+					print(player.Name .. " UNLOCKED " .. config.Name)
+
+					-- Play a sound or effect?
+				end
+			end
+		end)
+	end
+	
+	-- Create pads after levels exist
+	createStarterPads()
 end
 
 --------------------------------------------------------------------------------
 -- LIFECYCLE
 --------------------------------------------------------------------------------
 
-local function cleanupPlayerPath(player)
+function cleanupPlayerPath(player)
 	if playerPaths[player] then
 		for _, b in pairs(playerPaths[player].AllBlocks) do
 			if b and b.Parent then b:Destroy() end
 		end
 	end
 	playerPaths[player] = nil
-	playerProgress[player] = nil
-end
-
-local function startPath(player)
-	local char = player.Character
-	if not char then return end
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-	
-	if playerPaths[player] then return end
-
-	playerProgress[player] = 1 -- Start at Level 1
-
-	-- Generate first block aiming at Level 1
-	local targetPos = LEVEL_CONFIGS[1].Position
-	local dir = (targetPos - hrp.Position).Unit
-	local spawnPos = hrp.Position + (dir * 8) + Vector3.new(0, -2, 0)
-
-	local block = Instance.new("Part")
-	block.Name = "Start_" .. player.Name
-	block.Size = BLOCK_SIZE
-	block.Position = spawnPos
-	block.Anchored = true
-
-	-- Fix Rotation for start block too
-	local lookAtPoint = Vector3.new(targetPos.X, spawnPos.Y, targetPos.Z)
-	block.CFrame = CFrame.lookAt(spawnPos, lookAtPoint)
-	
-	CollectionService:AddTag(block, "Crystal")
-	block:SetAttribute("IgnoreTouches", true)
-	block.Parent = Workspace
-
-	Debris:AddItem(block, DIFFICULTY_SETTINGS[1].Time)
-
-	playerPaths[player] = {
-		LastBlock = block,
-		AllBlocks = {block}
-	}
-	
-	setupBlockEvents(player, block)
-	
-	-- Teleport player slightly to start
-	hrp.CFrame = block.CFrame + Vector3.new(0, 5, 0)
-	hrp.AssemblyLinearVelocity = Vector3.zero
+	-- Note: We do NOT reset playerProgress on cleanup, keeping progress across falls/deaths.
 end
 
 local function onCharacterAdded(player, char)
-	local hum = char:WaitForChild("Humanoid")
-	local hrp = char:WaitForChild("HumanoidRootPart")
-
 	cleanupPlayerPath(player)
-
-	local conn
-	conn = RunService.Heartbeat:Connect(function()
-		if not char or not char.Parent or hum.Health <= 0 then
-			conn:Disconnect()
-			return
-		end
-
-		if playerPaths[player] then return end
-		
-		-- Trigger if player jumps out of lobby or falls
-		local pos = hrp.Position
-		local dist = Vector3.new(pos.X, 0, pos.Z).Magnitude
-		
-		if (pos.Y < -5) or (dist > LOBBY_RADIUS and pos.Y > 0) then
-			startPath(player)
-		end
-	end)
+	-- No loop here anymore.
 end
 
 Players.PlayerAdded:Connect(function(p)
 	p.CharacterAdded:Connect(function(c) onCharacterAdded(p, c) end)
 end)
 
-Players.PlayerRemoving:Connect(cleanupPlayerPath)
+Players.PlayerRemoving:Connect(function(p)
+	cleanupPlayerPath(p)
+	playerProgress[p] = nil
+end)
 
+-- Initialize
 createLevels()
