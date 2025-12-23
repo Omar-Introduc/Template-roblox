@@ -13,11 +13,12 @@ local LEVEL_CONFIGS = {
 }
 
 -- 2. Dynamic Difficulty System
+-- Updated to use 'Variance' instead of Height, controlling X/Z offset
 local DIFFICULTY_SETTINGS = {
-	[1] = { MinDist = 8, MaxDist = 12, MinHeight = -1, MaxHeight = 1, Time = 5 },   -- Easy
-	[2] = { MinDist = 10, MaxDist = 14, MinHeight = -1, MaxHeight = 2, Time = 4.5 }, -- Medium
-	[3] = { MinDist = 12, MaxDist = 16, MinHeight = -2, MaxHeight = 3, Time = 4 },   -- Hard
-	[4] = { MinDist = 14, MaxDist = 17, MinHeight = -2, MaxHeight = 4, Time = 3 },   -- Extreme
+	[1] = { MinDist = 8, MaxDist = 12, Variance = 4, Time = 5 },   -- Easy
+	[2] = { MinDist = 10, MaxDist = 14, Variance = 6, Time = 4.5 }, -- Medium
+	[3] = { MinDist = 12, MaxDist = 16, Variance = 8, Time = 4 },   -- Hard
+	[4] = { MinDist = 14, MaxDist = 17, Variance = 10, Time = 3 },  -- Extreme
 }
 
 local BLOCK_SIZE = Vector3.new(10, 1, 10)
@@ -64,8 +65,7 @@ local function createLevels()
 			if player then
 				local currentTarget = playerProgress[player] or 1
 
-				-- 4. Checkpoint Logic: Update target to X+1 when touching Level X
-				-- If currentTarget is aiming for 'i', it means they just arrived at 'i'.
+				-- Checkpoint Logic: Update target to X+1 when touching Level X
 				if currentTarget == i then
 					if i < #LEVEL_CONFIGS then
 						playerProgress[player] = i + 1
@@ -99,54 +99,58 @@ function spawnNextBlock(player, currentBlock)
 	local startPos = currentBlock.Position
 	local targetPos = targetConfig.Position
 
-	-- Calculate Direction (3D Vector to allow climbing)
-	local dirVec = (targetPos - startPos)
-	local distToTarget = dirVec.Magnitude
-	local moveDir = dirVec.Unit
+	-- NEW ALGORITHM: 'Invisible Line' Projection
 
-	-- Math Settings from Difficulty Table
-	local dist = math.random(diff.MinDist * 10, diff.MaxDist * 10) / 10
-	local height = math.random(diff.MinHeight * 10, diff.MaxHeight * 10) / 10
+	-- 1. Calculate the direct vector (The Invisible Line) to the target center
+	local vectorToTarget = (targetPos - startPos)
+	local distToTarget = vectorToTarget.Magnitude
 
-	-- Safety: Avoid overshooting the target if close
-	if distToTarget < 20 then
-		dist = math.min(dist, distToTarget)
+	-- Direction unit vector
+	local moveDir = vectorToTarget.Unit
+
+	-- 2. Proportional Division: Move along this line by JumpDistance
+	local jumpDist = math.random(diff.MinDist * 10, diff.MaxDist * 10) / 10
+
+	-- Safety: Don't overshoot target if we are very close
+	if distToTarget < jumpDist + 5 then
+		jumpDist = distToTarget - 5 -- Land just before it
+		if jumpDist < 5 then jumpDist = 5 end -- Minimum jump
 	end
 
-	-- "Steeper Stairs" Interpretation:
-	-- The 'height' from difficulty is applied as variance to the natural slope of the path.
-	-- This ensures the player climbs towards the target while respecting the difficulty 'jagginess'.
-	-- If the target is significantly higher, we ensure we don't accidentally step down too much.
-	if dirVec.Y > 10 and height < 0 then
-		-- If we need to go up, and random gave us down, flip it or clamp it.
-		-- This keeps the "randomness" but biases it correctly.
-		height = math.abs(height)
-	end
+	local idealPos = startPos + (moveDir * jumpDist)
 
-	-- Calculate New Position: Move along the slope (moveDir * dist) then add vertical variance (height)
-	-- Note: Since moveDir includes Y, 'dist' already adds some height. The 'height' variable adds EXTRA offset.
-	-- However, standard parkour logic usually treats 'dist' as horizontal.
-	-- Let's stick to the prompt's likely intent:
-	-- If we use moveDir (3D), we climb naturally. The 'Height' param is variance.
-	local newPos = startPos + (moveDir * dist) + Vector3.new(0, height, 0)
+	-- 3. Sub-plane Probability: Apply controlled random Offset (Variance) on X/Z axis
+
+	local varAmount = diff.Variance
+	local offsetX = (math.random() - 0.5) * 2 * varAmount
+	local offsetZ = (math.random() - 0.5) * 2 * varAmount
+
+	-- We only modify X and Z. Y is determined by the 'Invisible Line' (idealPos.Y)
+	local finalPos = Vector3.new(idealPos.X + offsetX, idealPos.Y, idealPos.Z + offsetZ)
 
 	-- Create Block
 	local block = Instance.new("Part")
 	block.Name = "Path_" .. player.Name
 	block.Size = BLOCK_SIZE
-	block.Position = newPos
+	block.Position = finalPos
 	block.Anchored = true
-	block.CFrame = CFrame.lookAt(newPos, newPos + moveDir) -- Face the target direction
+
+	-- FIX: Flat Platforms (No Tilt)
+	-- Construct CFrame looking at the target's X/Z but keeping current Y (level)
+	-- This ensures Pitch and Roll are 0.
+	local lookAtPoint = Vector3.new(targetPos.X, finalPos.Y, targetPos.Z)
+	block.CFrame = CFrame.lookAt(finalPos, lookAtPoint)
+
 	block.Material = Enum.Material.Glass
 	block.BrickColor = BrickColor.new("Institutional white")
 	
-	-- 5. Integration: Tags & Attributes
+	-- Integration: Tags & Attributes
 	CollectionService:AddTag(block, "Crystal")
 	block:SetAttribute("IgnoreTouches", true)
 
 	block.Parent = Workspace
 
-	-- 3. Disappearing Platforms
+	-- Disappearing Platforms
 	Debris:AddItem(block, diff.Time)
 
 	-- Tracking
@@ -209,7 +213,10 @@ local function startPath(player)
 	block.Size = BLOCK_SIZE
 	block.Position = spawnPos
 	block.Anchored = true
-	block.CFrame = CFrame.lookAt(spawnPos, spawnPos + dir)
+
+	-- Fix Rotation for start block too
+	local lookAtPoint = Vector3.new(targetPos.X, spawnPos.Y, targetPos.Z)
+	block.CFrame = CFrame.lookAt(spawnPos, lookAtPoint)
 	
 	CollectionService:AddTag(block, "Crystal")
 	block:SetAttribute("IgnoreTouches", true)
