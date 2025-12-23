@@ -18,15 +18,15 @@ local function createParkourBlock()
 	local block = Instance.new("Part")
 	block.Name = "ParkourBlock"
 	block.Size = Vector3.new(10, 1, 10)
-	block.Material = Enum.Material.Glass
+	block.Material = Enum.Material.Neon
 	block.BrickColor = BrickColor.new("Institutional white")
 	block.Anchored = true
 
-	-- Tags and Attributes
+	-- Tags and Attributes for CrystalService
 	CollectionService:AddTag(block, "Crystal")
 	block:SetAttribute("IgnoreTouches", true)
 
-	-- SurfaceGui
+	-- SurfaceGui for Countdown
 	local surfaceGui = Instance.new("SurfaceGui")
 	surfaceGui.Name = "TimerGui"
 	surfaceGui.Face = Enum.NormalId.Top
@@ -50,10 +50,22 @@ end
 local function createLevelPlatform()
 	local platform = Instance.new("Part")
 	platform.Name = "LevelPlatform"
-	platform.Size = Vector3.new(20, 2, 20)
+
+	-- Circular Shape (Cylinder)
+	-- For a Cylinder Part, X is the length (height of cylinder), Y/Z are the diameter.
+	-- We want a platform of diameter 20 and height 1.
+	-- So Size = (1, 20, 20).
+	platform.Shape = Enum.PartType.Cylinder
+	platform.Size = Vector3.new(1, 20, 20)
+
+	-- Rotate 90 degrees on Z to make the flat circular face face up (Y-axis)
+	-- Cylinder default: Circle faces are on +X/-X.
+	-- Rotating 90 deg around Z moves +X to +Y.
+	platform.CFrame = CFrame.Angles(0, 0, math.rad(90))
+
 	platform.Material = Enum.Material.Neon
 	platform.Anchored = true
-	platform.BrickColor = BrickColor.new("Medium stone grey") -- Default
+	platform.BrickColor = BrickColor.new("Medium stone grey") -- Will be colored by System
 
 	platform.Parent = templates
 end
