@@ -1,19 +1,22 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
-local CollectionService = game:GetService("CollectionService") -- FALTA ESTA LÍNEA
+local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
 
 -- Configuration
 local TARGET_POS = Vector3.new(400, 150, 400) -- Dónde está la isla de lava
-local LOBBY_CENTER = Vector3.new(0, 0, 0)
 local BLOCK_SIZE = Vector3.new(10, 1, 10)
-local CLEANUP_TIME = 5 -- Tiempo en segundos antes de que desaparezca el bloque
+local CLEANUP_TIME = 5 -- Tiempo antes de borrar bloques
+local LOBBY_RADIUS = 13 -- Un poquito más del borde real (12) para dar margen
 
--- Player Data: Stores current path and ALL blocks for cleanup
+-- Player Data
 local playerPaths = {}
 
 -- 1. Create Destination (Lava Island)
 local function createLavaIsland()
+	if Workspace:FindFirstChild("LavaIsland") then return end
+
 	local island = Instance.new("Part")
 	island.Name = "LavaIsland"
 	island.Size = Vector3.new(30, 2, 30)
@@ -25,7 +28,6 @@ local function createLavaIsland()
 
 	local fire = Instance.new("Fire")
 	fire.Size = 10
-	fire.Heat = 10
 	fire.Parent = island
 
 	local light = Instance.new("PointLight")
@@ -35,7 +37,7 @@ local function createLavaIsland()
 	light.Parent = island
 end
 
--- Función para limpiar TODO el camino de un jugador (al morir o salir)
+-- Limpieza
 local function cleanupPlayerPath(player)
 	if playerPaths[player] and playerPaths[player].AllBlocks then
 		for _, block in pairs(playerPaths[player].AllBlocks) do
@@ -44,7 +46,7 @@ local function cleanupPlayerPath(player)
 			end
 		end
 	end
-	playerPaths[player] = nil -- Borrar datos
+	playerPaths[player] = nil
 end
 
 -- 2. Spawn Next Block Logic
@@ -53,9 +55,8 @@ local function spawnNextBlock(player, currentBlock)
 	local dirToTarget = (TARGET_POS - startPos).Unit
 	local horizontalDir = Vector3.new(dirToTarget.X, 0, dirToTarget.Z).Unit
 
-	-- Distancia de salto aleatoria pero posible
-	local forwardDist = math.random(9, 13) 
-	local heightDiff = math.random(-1, 3) 
+	local forwardDist = math.random(10, 14) 
+	local heightDiff = math.random(-1, 4) 
 
 	local newPos = startPos + (horizontalDir * forwardDist) + Vector3.new(0, heightDiff, 0)
 
@@ -65,19 +66,17 @@ local function spawnNextBlock(player, currentBlock)
 	block.Position = newPos
 	block.Anchored = true
 	
-	-- Crystal Logic Integration
+	-- Crystal Logic
 	CollectionService:AddTag(block, "Crystal")
-	block:SetAttribute("IgnoreTouches", true) -- IMPORTANTE: Requiere actualizar CrystalService
+	block:SetAttribute("IgnoreTouches", true)
 
 	block.Parent = Workspace
 	block.CFrame = CFrame.lookAt(newPos, newPos + horizontalDir)
 
-	-- Guardar bloque en la lista para borrarlo si muere
 	if playerPaths[player] then
 		table.insert(playerPaths[player].AllBlocks, block)
 	end
 	
-	-- Auto-destrucción por tiempo (Usando la variable CLEANUP_TIME)
 	Debris:AddItem(block, CLEANUP_TIME)
 
 	return block
@@ -91,32 +90,29 @@ local function setupBlockEvents(player, block)
 
 		if hit.Parent == player.Character then
 			local pathData = playerPaths[player]
-			-- Solo generar si es el último bloque que pisó
 			if pathData and pathData.LastBlock == block then
 				hasTriggeredNext = true
 				local nextBlock = spawnNextBlock(player, block)
-				pathData.LastBlock = nextBlock -- Actualizar referencia
+				pathData.LastBlock = nextBlock
 				setupBlockEvents(player, nextBlock)
 			end
 		end
 	end)
 end
 
--- 3. LOGICA DEL PRIMER BLOQUE (Modificada: Instantánea y Segura)
+-- 3. LOGICA DEL PRIMER BLOQUE (Instantánea)
 local function startPath(player)
 	local char = player.Character
 	if not char then return end
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 	
-	-- Si ya tiene un camino activo, no creamos otro encima
-	if playerPaths[player] then return end
+	if playerPaths[player] then return end -- Ya tiene camino
 
-	-- Dirección hacia la meta
 	local dirToLava = (TARGET_POS - hrp.Position).Unit
 	local horizontalDir = Vector3.new(dirToLava.X, 0, dirToLava.Z).Unit
 
-	-- Crear bloque justo enfrente y un poco abajo
+	-- Aparece justo enfrente
 	local spawnPos = hrp.Position + (horizontalDir * 8) - Vector3.new(0, 4, 0)
 
 	local block = Instance.new("Part")
@@ -125,58 +121,67 @@ local function startPath(player)
 	block.Position = spawnPos
 	block.Anchored = true
 	
-	-- Crystal Logic Integration
+	-- Crystal Logic
 	CollectionService:AddTag(block, "Crystal")
 	block:SetAttribute("IgnoreTouches", true)
 
 	block.Parent = Workspace
 	block.CFrame = CFrame.lookAt(spawnPos, spawnPos + horizontalDir)
 
-	-- Auto-destrucción por tiempo
 	Debris:AddItem(block, CLEANUP_TIME)
 
-	-- Inicializar datos del jugador
 	playerPaths[player] = { 
 		LastBlock = block,
-		AllBlocks = {block} -- Lista para limpieza
+		AllBlocks = {block}
 	}
 	
 	setupBlockEvents(player, block)
 
-	-- *** TELETRANSPORTE DE SEGURIDAD ***
-	-- Movemos al jugador justo encima del bloque para asegurar que no falle el primer salto
+	-- *** TELETRANSPORTE INSTANTÁNEO ***
+	-- Esto asegura que quedes encima del bloque
 	hrp.CFrame = block.CFrame + Vector3.new(0, 3, 0)
-	hrp.Velocity = Vector3.new(0,0,0) -- Detener inercia de caída
-
-	print(player.Name .. " comenzó el parkour (Teletransportado al primer bloque).")
+	hrp.Velocity = Vector3.new(0,0,0)
+	
+	print("🚀 Parkour iniciado para: " .. player.Name)
 end
 
--- Player Management
+-- Gestión de Jugadores
 local function onCharacterAdded(player, char)
 	local humanoid = char:WaitForChild("Humanoid", 10)
 	local hrp = char:WaitForChild("HumanoidRootPart", 10)
 	if not humanoid or not hrp then return end
 
-	-- Limpiar camino anterior si existía
 	cleanupPlayerPath(player)
 
-	-- Detectar salto inicial desde el Lobby
-	humanoid.StateChanged:Connect(function(old, new)
-		if new == Enum.HumanoidStateType.Jumping or new == Enum.HumanoidStateType.Freefall then
-			-- Verificar si estamos cerca del Lobby y no hemos empezado
-			local distFromLobby = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - LOBBY_CENTER).Magnitude
-			
-			-- Si salta fuera del lobby (> 15 studs) y no tiene camino
-			if distFromLobby > 15 and not playerPaths[player] then
-				startPath(player)
-			end
+	-- BUCLE ULTRA RÁPIDO (Heartbeat)
+	-- Chequea cada frame si el jugador salió de la isla
+	local connection
+	connection = RunService.Heartbeat:Connect(function()
+		if not char or not char.Parent or humanoid.Health <= 0 then
+			connection:Disconnect()
+			return
+		end
+
+		-- Verificar si ya tenemos camino
+		if playerPaths[player] then return end
+
+		local pos = hrp.Position
+		-- Distancia horizontal desde el centro (0,0,0)
+		local distFromCenter = Vector3.new(pos.X, 0, pos.Z).Magnitude
+		
+		-- CONDICIONES DE ACTIVACIÓN:
+		-- 1. Estás cayendo (Y < -1)  O
+		-- 2. Estás saltando fuera del radio del Lobby (> LOBBY_RADIUS) y en el aire
+		local isInAir = humanoid:GetState() == Enum.HumanoidStateType.Freefall or humanoid:GetState() == Enum.HumanoidStateType.Jumping
+		
+		if pos.Y < -1 or (distFromCenter > LOBBY_RADIUS and isInAir) then
+			startPath(player)
 		end
 	end)
 
-	-- Detectar MUERTE para limpiar bloques
 	humanoid.Died:Connect(function()
-		print(player.Name .. " murió. Reiniciando bloques...")
 		cleanupPlayerPath(player)
+		if connection then connection:Disconnect() end
 	end)
 end
 
@@ -190,5 +195,4 @@ Players.PlayerRemoving:Connect(function(player)
 	cleanupPlayerPath(player)
 end)
 
--- Initial Setup
 createLavaIsland()
