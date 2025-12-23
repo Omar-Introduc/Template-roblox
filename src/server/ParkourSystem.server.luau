@@ -2,11 +2,12 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
+local CollectionService = game:GetService("CollectionService")
 
 -- Configuration
 local TARGET_POS = Vector3.new(400, 150, 400)
 local LOBBY_CENTER = Vector3.new(0, 0, 0)
-local BLOCK_SIZE = Vector3.new(4, 1, 4)
+local BLOCK_SIZE = Vector3.new(10, 1, 10)
 local CLEANUP_TIME = 5
 local START_DELAY = 1
 
@@ -70,11 +71,11 @@ local function spawnNextBlock(player, currentBlock)
 	block.Size = BLOCK_SIZE
 	block.Position = newPos
 	block.Anchored = true
-	block.BrickColor = BrickColor.new("Dark stone grey") -- Dark stone
-	block.Material = Enum.Material.Slate -- Fits lava theme
+	block.Material = Enum.Material.Neon
 	block.TopSurface = Enum.SurfaceType.Smooth
 	block.BottomSurface = Enum.SurfaceType.Smooth
 	block.Parent = Workspace
+	CollectionService:AddTag(block, "Crystal")
 
 	-- Orient block to look at next target roughly
 	block.CFrame = CFrame.lookAt(newPos, newPos + horizontalDir)
@@ -132,11 +133,11 @@ local function startPath(player)
 	block.Size = BLOCK_SIZE
 	block.Position = spawnPos
 	block.Anchored = true
-	block.BrickColor = BrickColor.new("Dark stone grey")
-	block.Material = Enum.Material.Slate
+	block.Material = Enum.Material.Neon
 	block.TopSurface = Enum.SurfaceType.Smooth
 	block.BottomSurface = Enum.SurfaceType.Smooth
 	block.Parent = Workspace
+	CollectionService:AddTag(block, "Crystal")
 	block.CFrame = CFrame.lookAt(spawnPos, spawnPos + horizontalDir)
 
 	-- Initialize path data
