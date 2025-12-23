@@ -33,7 +33,7 @@ local function setupCrystal(part: BasePart)
     part.Color = CrystalConfig.Colors.Default
     
     -- Variables locales para controlar esta plataforma específica
-    local currentTouches = CrystalConfig.MaxTouches
+    local currentTouches = part:GetAttribute("MaxTouches") or CrystalConfig.MaxTouches
     local isDebounce = false -- Para evitar que cuente muchos toques en un solo segundo
     
     -- Crear el contador visual (Solo si no se ignora)

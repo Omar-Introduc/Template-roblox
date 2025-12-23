@@ -144,12 +144,104 @@ local function createMasterGem()
 	gem.Parent = templates
 end
 
+local function createPhysicalShopSign()
+	local anchor = Instance.new("Part")
+	anchor.Name = "FloatingShopSign"
+	anchor.Size = Vector3.new(10, 7, 0.2)
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.Transparency = 1
+	anchor.Parent = templates
+	
+	-- Partículas de "Polvo Mágico"
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "SignGlow"
+	particles.Texture = "rbxassetid://244221440" -- Estrella
+	particles.Color = ColorSequence.new(Color3.fromRGB(255, 255, 200))
+	particles.Size = NumberSequence.new(0.2, 0)
+	particles.Lifetime = NumberRange.new(1, 2)
+	particles.Rate = 5
+	particles.Speed = NumberRange.new(1, 3)
+	particles.Parent = anchor
+
+	local surfaceGui = Instance.new("SurfaceGui")
+	surfaceGui.Name = "ShopDisplay"
+	surfaceGui.Adornee = anchor
+	surfaceGui.CanvasSize = Vector2.new(1000, 700)
+	surfaceGui.Parent = anchor
+
+	-- Contenedor Principal (Estilo Periódico)
+	local bg = Instance.new("Frame")
+	bg.Name = "Frame"
+	bg.Size = UDim2.fromScale(1, 1)
+	bg.BackgroundColor3 = Color3.fromRGB(245, 245, 220)
+	bg.Parent = surfaceGui
+
+	local bgStroke = Instance.new("UIStroke")
+	bgStroke.Thickness = 4
+	bgStroke.Color = Color3.new(0, 0, 0)
+	bgStroke.Parent = bg
+
+	-- Texto "ÚLTIMA HORA"
+	local newsFlash = Instance.new("TextLabel")
+	newsFlash.Name = "NewsFlash"
+	newsFlash.Size = UDim2.new(1, 0, 0.15, 0)
+	newsFlash.Text = "🚨 ¡EL VOLCÁN DEL NIVEL 3 ESTÁ ACTIVÁNDOSE! 🚨"
+	newsFlash.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	newsFlash.TextColor3 = Color3.fromRGB(255, 255, 255)
+	newsFlash.Font = Enum.Font.GothamBold
+	newsFlash.TextScaled = true
+	newsFlash.Parent = bg
+
+	-- Sección de Compra (Interactiva)
+	local buySection = Instance.new("Frame")
+	buySection.Name = "BuySection"
+	buySection.Position = UDim2.new(0.1, 0, 0.25, 0)
+	buySection.Size = UDim2.new(0.8, 0, 0.6, 0)
+	buySection.BackgroundTransparency = 1
+	buySection.Parent = bg
+
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0.05, 0)
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.Parent = buySection
+
+	-- Función interna para crear botones
+	local function createItem(name, cost)
+		local btn = Instance.new("TextButton")
+		btn.Name = "Item_" .. name:gsub(" ", "")
+		btn.Size = UDim2.new(1, 0, 0.4, 0)
+		btn.Text = "Comprar " .. name .. " [" .. cost .. " Gems]"
+		btn.Font = Enum.Font.SpecialElite
+		btn.TextScaled = true
+		btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		btn.Parent = buySection
+		
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 3
+		stroke.Parent = btn
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 5)
+		corner.Parent = btn
+
+		return btn
+	end
+
+	createItem("Super Salto", 100)
+	local mainBtn = createItem("ABRIR TIENDA", "???")
+	mainBtn.Name = "BuyButton" -- For consistency with click detection
+	mainBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+	mainBtn.TextColor3 = Color3.new(1, 1, 1)
+end
+
 -- 4. Signal Ready
 print("🏭 PrefabFactory: Creating Master Prefabs...")
 createMasterBlock()
 createMasterPlatform()
 createMasterPad()
 createMasterGem()
+createPhysicalShopSign()
 
 local readyVal = Instance.new("StringValue")
 readyVal.Name = "FactoryReady"

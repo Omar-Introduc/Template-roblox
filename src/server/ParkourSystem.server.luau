@@ -62,10 +62,10 @@ local LOBBY_RADIUS = 45
 
 -- 2. Dynamic Difficulty System
 local DIFFICULTY_SETTINGS = {
-	[1] = { MinDist = 12, MaxDist = 15, Variance = 3.5, Time = 5 },
-	[2] = { MinDist = 14, MaxDist = 17, Variance = 5.0, Time = 4.5 }, 
-	[3] = { MinDist = 15, MaxDist = 18, Variance = 6.5, Time = 4 },   
-	[4] = { MinDist = 16, MaxDist = 19, Variance = 8.0, Time = 3.5 },
+	[1] = { MinDist = 12, MaxDist = 14, Variance = 3.5, Time = 5, MobileChance = 0 },
+	[2] = { MinDist = 14, MaxDist = 16, Variance = 5.0, Time = 4.5, MobileChance = 0.2 }, -- 20% móviles
+	[3] = { MinDist = 16, MaxDist = 18, Variance = 6.5, Time = 4, MobileChance = 0.4 },   -- 40% móviles
+	[4] = { MinDist = 17, MaxDist = 20, Variance = 8.0, Time = 3.5, MobileChance = 0.6 },  -- 60% móviles y muy lejos
 }
 
 local ATMOSPHERE_COLORS = {
@@ -78,6 +78,7 @@ local ATMOSPHERE_COLORS = {
 -- State
 local playerPaths = {} -- player -> { LastBlock = Part, AllBlocks = {Part, ...} }
 local playerProgress = {} -- player -> Highest Level Index Reached
+local playerStreaks = {} -- player -> Current consecutive jumps count
 local levelParts = {} -- levelIndex -> Part
 
 -- Forward declaration to allow mutual recursion if needed
@@ -110,6 +111,22 @@ local function applyBiome(part, biome)
 	emitter.Rate = 0 -- Triggered via Emit()
 	emitter.Speed = NumberRange.new(2, 5)
 	emitter.Parent = part
+end
+
+local function makePlatformMove(block, levelIndex)
+	local distance = 5 + levelIndex -- Más rango de movimiento en niveles altos
+	local speed = 2 -- Segundos por ciclo
+	local originalPos = block.Position
+	-- Dirección aleatoria horizontal
+	local direction = Vector3.new(math.random(-100, 100)/100, 0, math.random(-100, 100)/100).Unit
+	
+	task.spawn(function()
+		while block and block.Parent do
+			local offset = math.sin(tick() * (math.pi / speed)) * distance
+			block.Position = originalPos + (direction * offset)
+			task.wait()
+		end
+	end)
 end
 
 local function applyRewards(player, stage)
@@ -232,32 +249,47 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 	
 	-- 3. Horizontal Direction with Variance
 	local horizontalDir = Vector3.new(dirToTarget.X, 0, dirToTarget.Z).Unit
-	local angle = (math.random() - 0.5) * math.rad(diff.Variance * 12) -- Slightly more variance control
+	local angle = (math.random() - 0.5) * math.rad(diff.Variance * 12)
 	local rotatedDir = CFrame.Angles(0, angle, 0) * horizontalDir
 	
-	-- 4. Calculate Vertical Step (Smooth Progression)
-	-- Proportional height step based on how much distance we are covering
+	-- FORZAR DISTANCIA MÁXIMA en Niveles Altos si no es móvil
+	local willMove = math.random() < (diff.MobileChance or 0)
+	if levelIndex >= 3 and not willMove then
+		jumpDist = math.random(diff.MaxDist - 1, diff.MaxDist)
+	end
+
+	-- 4. Calculate Vertical Step
 	local heightStep = (targetPos.Y - lastPos.Y) * (jumpDist / distToTarget)
 	
 	local finalPos = lastPos + (rotatedDir * jumpDist) + Vector3.new(0, heightStep, 0)
 	
-	-- 5. Safety: Boundary Check (Don't spawn inside target or lobby)
+	-- 5. Safety: Boundary Check
 	if (finalPos - targetPos).Magnitude < 10 then
-		finalPos = lastPos + (dirToTarget * (distToTarget - 12)) -- Back off to ensure a gap
+		finalPos = lastPos + (dirToTarget * (distToTarget - 12))
 	end
 	
-	-- Keep blocks outside the central lobby area (80x80, radius 40 + 5 buffer)
 	if (finalPos * Vector3.new(1, 0, 1)).Magnitude < LOBBY_RADIUS then
 		local pushDir = (finalPos * Vector3.new(1, 0, 1)).Unit
 		local horizontalOffset = pushDir * LOBBY_RADIUS
 		finalPos = Vector3.new(horizontalOffset.X, finalPos.Y, horizontalOffset.Z)
 	end
 	
-	-- Clone Master Prefab
+	-- 6. Clone & Setup Block
 	local block = folder.MasterBlock:Clone()
 	block.Name = "Path_" .. player.Name
 	block.Position = finalPos
 	block.Parent = Workspace
+	
+	if willMove then
+		block.Color = Color3.fromRGB(255, 255, 0) -- Amarillo = Peligro/Móvil
+		makePlatformMove(block, levelIndex)
+	end
+
+	-- Tip Adicional: Trampa Nivel 4 (Se rompe más rápido)
+	if levelIndex == 4 and math.random() < 0.5 then
+		block:SetAttribute("MaxTouches", 1)
+		block.Transparency = 0.5 -- Visual cue that it's fragile
+	end
 	
 	-- Apply Biome Skin
 	applyBiome(block, biome)
@@ -283,10 +315,17 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 			local p = Players:GetPlayerFromCharacter(hit.Parent)
 			if p and p == player then
 				collected = true
+				
+				-- Multiplier Logic: 1.5x after 10 jumps, 2x after 20 jumps
+				local streak = playerStreaks[player] or 0
+				local multiplier = 1
+				if streak >= 20 then multiplier = 2
+				elseif streak >= 10 then multiplier = 1.5 end
+				
 				local ls = p:FindFirstChild("leaderstats")
 				if ls then
 					local gVal = ls:FindFirstChild("Gems")
-					if gVal then gVal.Value += 1 end
+					if gVal then gVal.Value += math.floor(1 * multiplier) end
 				end
 				
 				-- Feedback Musical y Visual
@@ -362,8 +401,8 @@ setupBlockEvents = function(player, block)
 				-- Set an attribute to let the client know it was stepped on (for UI pulse)
 				block:SetAttribute("Stepped", true)
 
-				local currentLevel = playerProgress[player] or 0
-				local nextBlock = spawnNextBlock(player, currentLevel + 1)
+				local targetLevel = pathData.TargetLevel or 1
+				local nextBlock = spawnNextBlock(player, targetLevel)
 				if nextBlock then
 					pathData.LastBlock = nextBlock
 				else
@@ -377,22 +416,34 @@ end
 cleanupPlayerPath = function(player)
 	if playerPaths[player] then
 		for _, b in pairs(playerPaths[player].AllBlocks) do
-			if b and b.Parent then b:Destroy() end
+			if b and b.Parent then
+				-- Increment Streak
+				local streak = (playerStreaks[player] or 0) + 1
+				playerStreaks[player] = streak
+				player:SetAttribute("Streak", streak)
+				
+				-- Feedback visual del streak (opcional)
+				if (streak) % 10 == 0 then
+					print("🔥 [STREAK] " .. player.Name .. " is on fire! Multiplier active.")
+				end
+				
+				b:Destroy() 
+			end
 		end
 	end
 	playerPaths[player] = nil
 end
 
-startPath = function(player, startPad)
+startPath = function(player, startPad, targetLevel)
 	cleanupPlayerPath(player)
 
 	playerPaths[player] = {
 		LastBlock = nil,
-		AllBlocks = {}
+		AllBlocks = {},
+		TargetLevel = targetLevel
 	}
 
-	local currentLevel = playerProgress[player] or 0
-	local firstBlock = spawnNextBlock(player, currentLevel + 1, startPad)
+	local firstBlock = spawnNextBlock(player, targetLevel, startPad)
 
 	if firstBlock then
 		playerPaths[player].LastBlock = firstBlock
@@ -449,9 +500,9 @@ local function createStarterPads()
 						checkpoint.Position = sourcePart.Position + Vector3.new(0, 15, 0) -- High up, invisible
 						checkpoint.Transparency = 1
 						checkpoint.CanCollide = false
-						checkpoint.CanTouch = false
+						checkpoint.CanTouch = false -- No necesita detectar toques una vez creado
 						checkpoint.Enabled = true
-						checkpoint.Duration = 0
+						checkpoint.Duration = 0 -- Sin escudo de protección
 						
 						local decal = checkpoint:FindFirstChildOfClass("Decal")
 						if decal then decal:Destroy() end
@@ -460,7 +511,7 @@ local function createStarterPads()
 					end
 					player.RespawnLocation = checkpoint
 					
-					startPath(player, pad)
+					startPath(player, pad, targetLevelIndex)
 					task.wait(1)
 					debounce = false
 				end
@@ -562,6 +613,54 @@ local function createLevels()
 	end
 	
 	createStarterPads()
+
+	-- Place Floating Shop Sign in the Lobby
+	local function placeFloatingSign()
+		print("🛒 [DEBUG] Intentando spawnear el anuncio físico en el Lobby...")
+		local template = Templates:WaitForChild("FloatingShopSign", 5)
+		if not template then
+			warn("❌ [DEBUG] No se encontró el template FloatingShopSign")
+			return
+		end
+		
+		local sign = template:Clone()
+		-- Posición en el Lobby (cerca del spawn pero sin estorbar)
+		sign.Position = Vector3.new(15, 8, 15) 
+		
+		-- Girar el cartel para que mire hacia el Spawn (0,0,0)
+		sign.CFrame = CFrame.lookAt(sign.Position, Vector3.new(0, sign.Position.Y, 0))
+		
+		sign.Parent = Workspace
+		print("✅ [DEBUG] Anuncio físico spawneado en el Lobby: " .. tostring(sign.Position))
+
+		-- Recoil Effect when touched
+		local originalPos = sign.Position
+		local debounce = false
+		sign.Touched:Connect(function(hit)
+			if debounce then return end
+			local char = hit.Parent
+			if char:FindFirstChild("Humanoid") then
+				debounce = true
+				
+				local pushInfo = TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+				local returnInfo = TweenInfo.new(0.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+				
+				local pushGoal = {Position = originalPos + Vector3.new(0, 0, 1.5)}
+				local returnGoal = {Position = originalPos}
+				
+				local t1 = TweenService:Create(sign, pushInfo, pushGoal)
+				t1:Play()
+				t1.Completed:Connect(function()
+					task.wait(0.1)
+					TweenService:Create(sign, returnInfo, returnGoal):Play()
+				end)
+				
+				task.wait(1)
+				debounce = false
+			end
+		end)
+	end
+	task.spawn(placeFloatingSign)
 end
 
 --------------------------------------------------------------------------------
@@ -596,7 +695,8 @@ end)
 
 local function onCharacterAdded(player, char)
 	cleanupPlayerPath(player)
-
+	playerStreaks[player] = 0 -- Reset streak on death
+	
 	local levelIndex = playerProgress[player] or 0
 	
 	-- Apply rewards based on progress
@@ -604,6 +704,15 @@ local function onCharacterAdded(player, char)
 end
 
 Players.PlayerAdded:Connect(function(p)
+	-- Initialize Progress from Leaderstats if it exists
+	local ls = p:WaitForChild("leaderstats", 10)
+	if ls then
+		local stageVal = ls:WaitForChild("Stage", 5)
+		if stageVal then
+			playerProgress[p] = stageVal.Value
+		end
+	end
+	
 	p.CharacterAdded:Connect(function(c) onCharacterAdded(p, c) end)
 end)
 
