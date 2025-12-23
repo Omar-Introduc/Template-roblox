@@ -3,6 +3,7 @@ local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local CollectionService = game:GetService("CollectionService")
 local ServerStorage = game:GetService("ServerStorage")
+local TweenService = game:GetService("TweenService")
 
 -- Wait for Factory
 local Templates = ServerStorage:WaitForChild("Templates")
@@ -11,13 +12,13 @@ Templates:WaitForChild("FactoryReady")
 -- 1. Modular Spiral Level Layout (Z = 10, 20, 30, 40)
 local LEVEL_CONFIGS = {
 	-- Level 1: Z=10. Start (50, 30, 10)
-	{ Position = Vector3.new(50, 30, 10), Name = "Level1", Color = BrickColor.new("Bright green") },
+	{ Position = Vector3.new(50, 30, 10), Name = "Level1" },
 	-- Level 2: Z=20. (0, 60, 20)
-	{ Position = Vector3.new(0, 60, 20), Name = "Level2", Color = BrickColor.new("Bright yellow") },
+	{ Position = Vector3.new(0, 60, 20), Name = "Level2" },
 	-- Level 3: Z=30. (-50, 90, 30)
-	{ Position = Vector3.new(-50, 90, 30), Name = "Level3", Color = BrickColor.new("Bright orange") },
+	{ Position = Vector3.new(-50, 90, 30), Name = "Level3" },
 	-- Level 4: Z=40. (0, 120, 40)
-	{ Position = Vector3.new(0, 120, 40), Name = "Level4", Color = BrickColor.new("Bright red") },
+	{ Position = Vector3.new(0, 120, 40), Name = "Level4" },
 }
 
 -- 2. Dynamic Difficulty System
@@ -114,16 +115,29 @@ function spawnNextBlock(player, currentBlock)
 	local finalPos = Vector3.new(idealPos.X + offsetX, idealPos.Y, idealPos.Z + offsetZ)
 
 	-- Create Block from Prefab (CLONING LOGIC)
-	local block = Templates.ParkourBlock:Clone()
+	-- Use the prefab corresponding to the TARGET level
+	local levelFolder = Templates:FindFirstChild("Level" .. targetIndex)
+	if not levelFolder then
+		warn("Level folder not found for index: " .. targetIndex)
+		return nil
+	end
+
+	local block = levelFolder.ParkourBlock:Clone()
 	block.Name = "Path_" .. player.Name
 	block.Position = finalPos
 
 	-- FIX: Flat Rotation (No Tilt)
-	-- Construct CFrame looking at the target's X/Z but keeping current Y (level)
 	local lookAtPoint = Vector3.new(targetPos.X, finalPos.Y, targetPos.Z)
 	block.CFrame = CFrame.lookAt(finalPos, lookAtPoint)
 
+	-- Magic Construction: Start small and grow
+	local targetSize = block.Size
+	block.Size = Vector3.new(0.1, 0.1, 0.1)
 	block.Parent = Workspace
+
+	local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out)
+	local tween = TweenService:Create(block, tweenInfo, {Size = targetSize})
+	tween:Play()
 
 	-- Visual Countdown
 	createCountdown(block, diff.Time)
@@ -196,21 +210,17 @@ local function createStarterPads()
 
 	-- Helper to create a pad
 	local function makePad(sourcePart, targetPos, levelIndexForUnlock)
-		local pad = Templates.StarterPad:Clone()
-		pad.Name = "StarterPad_Level" .. (levelIndexForUnlock + 1)
+		local targetLevelIndex = levelIndexForUnlock + 1
+		local levelFolder = Templates:FindFirstChild("Level" .. targetLevelIndex)
+		if not levelFolder then return end
 
-		-- Position at edge facing target
-		-- NOTE: LevelPlatform is a Cylinder rotated on X (length) to be flat.
-		-- sourcePart might be Cylinder or Block.
-		-- If Cylinder (LevelPlatform), Size.X is height(1), Size.Y/Z is diameter(20).
-		-- If Block (Lobby), Size is Box.
+		local pad = levelFolder.StarterPad:Clone()
+		pad.Name = "StarterPad_Level" .. targetLevelIndex
 
 		local distFromCenter = 0
 		if sourcePart.Name == "LevelPlatform" or sourcePart.Name:find("Level") then
-			-- Cylinder Logic: Radius = Size.Y / 2 (since Size is (1, 20, 20))
 			distFromCenter = (sourcePart.Size.Y / 2) - 2.5
 		else
-			-- Block Logic
 			distFromCenter = (sourcePart.Size.X / 2) - 2.5
 		end
 
@@ -227,9 +237,6 @@ local function createStarterPads()
 			local player = Players:GetPlayerFromCharacter(hit.Parent)
 			if player then
 				local progress = playerProgress[player] or 0
-
-				-- Independent Pathing: Triggered only if player has unlocked this level
-				-- (Or maybe they can try if they are there? Logic says "unlocked")
 				if progress >= levelIndexForUnlock then
 					debounce = true
 					startPath(player, pad)
@@ -260,33 +267,32 @@ local function createLevels()
 		local existing = Workspace:FindFirstChild(config.Name)
 		local platform
 
+		-- Get the correct template
+		local levelFolder = Templates:FindFirstChild("Level" .. i)
+		if not levelFolder then continue end
+
 		if existing then
+			-- We can't easily replace "existing" without destroying it if it's the wrong theme.
+			-- Ideally we destroy existing or update it.
+			-- For now, let's assume we can update its position.
+			-- Or better, if we want themes, we should probably respawn it if it's not the right theme.
+			-- But simplicity: Just update position.
 			platform = existing
 			platform.Position = config.Position
-			platform.BrickColor = config.Color
 		else
-			platform = Templates.LevelPlatform:Clone()
+			platform = levelFolder.LevelPlatform:Clone()
 			platform.Name = config.Name
-			-- Cloning preserves Rotation (Flat Cylinder)
-			-- We set Position, which preserves Rotation CFrame component
 			platform.Position = config.Position
-			platform.BrickColor = config.Color
 			platform.Parent = Workspace
 		end
 
 		levelParts[i] = platform
 
-		-- Checkpoint Logic with Independent Leveling
 		platform.Touched:Connect(function(hit)
 			local player = Players:GetPlayerFromCharacter(hit.Parent)
 			if player then
-				-- Independent Pathing: Clear path when reaching a platform
 				if playerPaths[player] then
-					-- Stop generating new blocks
 					playerPaths[player].LastBlock = nil
-					-- Optionally clear old blocks immediately?
-					-- Usually better to let them expire or clear explicitly.
-					-- We'll clear to be clean.
 					cleanupPlayerPath(player)
 				end
 
@@ -318,16 +324,13 @@ end
 local function onCharacterAdded(player, char)
 	cleanupPlayerPath(player)
 
-	-- Precise Spawning: Teleport to top of last LevelPlatform reached
 	local levelIndex = playerProgress[player] or 0
 	if levelIndex > 0 then
 		local levelPart = levelParts[levelIndex]
 		if levelPart then
 			local hrp = char:WaitForChild("HumanoidRootPart", 5)
 			if hrp then
-				task.wait(0.1) -- Physics frame wait
-				-- LevelPlatform is 1 unit thick (Size.X=1). Center is at Y. Top is Y + 0.5.
-				-- Teleport slightly higher (+3) to be safe.
+				task.wait(0.1)
 				hrp.CFrame = levelPart.CFrame + Vector3.new(0, 3, 0)
 			end
 		end
