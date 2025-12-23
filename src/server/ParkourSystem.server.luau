@@ -384,8 +384,12 @@ setupBlockEvents = function(player, block)
 	local triggered = false
 	block.Touched:Connect(function(hit)
 		if triggered then return end
-		local player = Players:GetPlayerFromCharacter(hit.Parent)
-		if player then
+		local char = hit.Parent
+		local p = Players:GetPlayerFromCharacter(char)
+		if p and p == player then
+			-- Verify this is a generated path block
+			if not block.Name:find("Path_") then return end
+
 			local pathData = playerPaths[player]
 			if pathData and pathData.LastBlock == block then
 				triggered = true
@@ -435,6 +439,15 @@ cleanupPlayerPath = function(player)
 end
 
 startPath = function(player, startPad, targetLevel)
+	-- No reset if already on this level and first block is still alive
+	local current = playerPaths[player]
+	if current and current.TargetLevel == targetLevel then
+		local first = current.AllBlocks[1]
+		if first and first.Parent then
+			return 
+		end
+	end
+
 	cleanupPlayerPath(player)
 
 	playerPaths[player] = {
@@ -482,14 +495,13 @@ local function createStarterPads()
 		pad.CFrame = CFrame.lookAt(pad.Position, Vector3.new(targetPos.X, pad.Position.Y, targetPos.Z))
 		pad.Parent = Workspace
 
-		local debounce = false
+		local activeDebounces = {}
 		pad.Touched:Connect(function(hit)
-			if debounce then return end
 			local player = Players:GetPlayerFromCharacter(hit.Parent)
-			if player then
+			if player and not activeDebounces[player] then
 				local progress = playerProgress[player] or 0
 				if progress >= levelIndexForUnlock then
-					debounce = true
+					activeDebounces[player] = true
 					
 					-- Checkpoint logic: Spawn player on this platform from now on
 					local checkpoint = sourcePart:FindFirstChild("CheckpointSpawn")
@@ -513,7 +525,7 @@ local function createStarterPads()
 					
 					startPath(player, pad, targetLevelIndex)
 					task.wait(1)
-					debounce = false
+					activeDebounces[player] = false
 				end
 			end
 		end)
@@ -555,13 +567,14 @@ local function createLevels()
 			if player then
 				levelDebounce = true
 				
+				-- DETENER GENERACIÓN: Limpiar el camino actual al llegar a la meta
+				if playerPaths[player] then
+					cleanupPlayerPath(player)
+					playerPaths[player] = nil
+				end
+
 				local currentProgress = playerProgress[player] or 0
 				if i > currentProgress then
-					if playerPaths[player] then
-						playerPaths[player].LastBlock = nil
-						cleanupPlayerPath(player)
-					end
-					
 					playerProgress[player] = i
 					print(player.Name .. " UNLOCKED " .. config.Name)
 					
