@@ -860,6 +860,8 @@ end
 --------------------------------------------------------------------------------
 
 -- Atmosphere Management Loop
+-- Atmosphere Management (Server-Side Default)
+-- Note: Dynamic per-player atmosphere should be handled on Client to avoid conflicts.
 task.spawn(function()
 	local Lighting = game:GetService("Lighting")
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
@@ -867,22 +869,8 @@ task.spawn(function()
 		atmosphere = Instance.new("Atmosphere", Lighting)
 	end
 
-	while true do
-		for _, player in ipairs(Players:GetPlayers()) do
-			local char = player.Character
-			if char and char:FindFirstChild("HumanoidRootPart") then
-				local stage = playerProgress[player] or 1
-				local atmosphereColor = ATMOSPHERE_COLORS[stage]
-				if atmosphereColor then
-					-- Smooth transition
-					TweenService:Create(atmosphere, TweenInfo.new(2), {
-						Color = atmosphereColor
-					}):Play()
-				end
-			end
-		end
-		task.wait(2)
-	end
+	-- Set a default baseline color
+	atmosphere.Color = Color3.fromRGB(150, 180, 255)
 end)
 
 local function onCharacterAdded(player, char)
