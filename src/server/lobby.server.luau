@@ -23,6 +23,7 @@ end
 -- Función para crear un Árbol de Cerezo (Sakura)
 local function createCherryTree(position, parent)
 	local Templates = ReplicatedStorage:WaitForChild("Templates")
+	while not Templates:GetAttribute("SakuraReady") do task.wait(0.1) end
 	local tree = Templates:WaitForChild("MasterSakuraTree"):Clone()
 	
 	-- Posicionamos el modelo
@@ -113,7 +114,7 @@ local function createDeadlyOcean()
 			
 			-- Splash Sound
 			local splash = Instance.new("Sound", hit)
-			splash.SoundId = "rbxassetid://193551353" -- Valid Water Splash
+			splash.SoundId = "rbxassetid://5930519356" -- High Quality Water Splash
 			splash.Volume = 0.8
 			splash.PlayOnRemove = true
 			splash:Play()
@@ -151,11 +152,18 @@ local function setupGameEnvironment()
 	createLobbyIsland()
 	createDeadlyOcean()
 	
-	-- Ajuste de iluminación básico para que se vea mejor
+	-- Ajuste de Iluminación (Tokyo Style)
 	Lighting.Ambient = Color3.fromRGB(150, 150, 150)
+	Lighting.OutdoorAmbient = Color3.fromHex("#FFE4E1") -- Tinte rosa amanecer
+	Lighting.GlobalShadows = true
 	Lighting.Brightness = 2.5
 	
-	print("✨ Entorno listo. ¡A saltar!")
+	-- Bloom para "brillo" suave
+	local bloom = Instance.new("BloomEffect", Lighting)
+	bloom.Intensity = 0.4
+	bloom.Threshold = 0.8
+	
+	print("✨ Entorno listo (Estilo Tokyo). ¡A saltar!")
 end
 
 setupGameEnvironment()

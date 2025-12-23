@@ -7,7 +7,9 @@ local TweenService = game:GetService("TweenService")
 
 -- Wait for Factory
 print("🏃 ParkourSystem: Waiting for Templates in ReplicatedStorage...")
-local Templates = ReplicatedStorage:WaitForChild("Templates", 15)
+local Templates = ReplicatedStorage:WaitForChild("Templates")
+while not Templates:GetAttribute("PrefabReady") do task.wait(0.1) end
+local _readySignal = Templates:WaitForChild("FactoryReady")
 if not Templates then
 	error("🛑 ParkourSystem: TIMEOUT waiting for Templates folder!")
 end
@@ -115,29 +117,26 @@ end
 
 local function makePlatformMove(block, levelIndex)
 	local distance = 5 + levelIndex
-	local speed = 2 -- Segundos por ciclo
+	local cycleDuration = 3 -- Seconds for a full cycle
 	local originalPos = block.Position
 	local direction = Vector3.new(math.random(-100, 100)/100, 0, math.random(-100, 100)/100).Unit
 	
 	task.spawn(function()
 		while block and block.Parent do
 			local time = tick()
-			local offset = math.sin(time * (math.pi / speed)) * distance
-			local nextOffset = math.sin((time + 0.03) * (math.pi / speed)) * distance
+			local alpha = (math.sin(time * (math.pi * 2 / cycleDuration)) + 1) / 2 -- 0 to 1
+			local nextAlpha = (math.sin((time + 0.03) * (math.pi * 2 / cycleDuration)) + 1) / 2
 			
-			local newPos = originalPos + (direction * offset)
-			local nextPos = originalPos + (direction * nextOffset)
+			local currentPos = originalPos + (direction * (alpha - 0.5) * distance * 2)
+			local nextPos = originalPos + (direction * (nextAlpha - 0.5) * distance * 2)
 			
-			-- Calcular velocidad para que el motor de física mueva al jugador
-			local velocity = (nextPos - newPos) / 0.03
+			-- AssemblyLinearVelocity is critical for moving players with anchored parts
+			local velocity = (nextPos - currentPos) / 0.03
 			block.AssemblyLinearVelocity = velocity
 			
-			-- Sincronizar CFrame
-			block.CFrame = CFrame.new(newPos)
+			-- Update CFrame for smooth rendering
+			block.CFrame = CFrame.new(currentPos)
 			task.wait()
-		end
-		if block then
-			block.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 		end
 	end)
 end
@@ -271,13 +270,17 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 	local folder = Templates
 	
 	local path = playerPaths[player]
+	if not path then 
+		return nil -- Stop generation if path was cleaned up (reached goal)
+	end
+
 	local lastBlock = originOverride or path.LastBlock
 	if not lastBlock then 
 		warn("🏃 ParkourSystem: spawnNextBlock failed - no origin for player " .. player.Name)
 		return nil 
 	end
 	
-	local lastPos = lastBlock.Position
+	local lastPos = (lastBlock:IsA("Model") and lastBlock:GetPivot().Position) or lastBlock.Position
 	
 	local targetLevel = LEVEL_CONFIGS[levelIndex]
 	local targetPos = targetLevel.Position
@@ -327,12 +330,12 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 	local isBomb = math.random() < 0.1
 	
 	if isBomb then
-		block = folder.BombGift:Clone()
-		block.Name = "Path_" .. player.Name .. "_BOMB"
-		block:SetPrimaryPartCFrame(CFrame.new(finalPos))
-		block.Parent = Workspace
+		local bomb = folder.BombGift:Clone()
+		bomb.Name = "Path_" .. player.Name .. "_BOMB"
+		bomb:PivotTo(CFrame.new(finalPos))
+		bomb.Parent = Workspace
 		
-		local handle = block.PrimaryPart
+		local handle = bomb.PrimaryPart
 		handle.Touched:Connect(function(hit)
 			local char = hit.Parent
 			local humrp = char:FindFirstChild("HumanoidRootPart")
@@ -348,16 +351,20 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 
 				-- Festive Bang
 				local bang = Instance.new("Sound", Workspace)
-				bang.SoundId = "rbxassetid://157070148" -- Explosion/Bang sound
+				bang.SoundId = "rbxassetid://12222208" -- Standard Explosion
 				bang.Volume = 1
 				bang.PlayOnRemove = true
 				bang:Play()
 				bang:Destroy()
 				
 				task.wait(0.1)
-				block:Destroy()
+				bomb:Destroy()
 			end
 		end)
+		
+		-- CRITICAL: If we spawn a bomb, we must automatically spawn the next valid platform
+		-- so the player has a way to continue the path.
+		return spawnNextBlock(player, levelIndex, bomb)
 	else
 		block = folder.MasterBlock:Clone()
 		block.Name = "Path_" .. player.Name
@@ -470,7 +477,7 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 				if levelIndex == 1 then
 					-- Overwrite with festive bells for Level 1
 					local bell = Instance.new("Sound", gem)
-					bell.SoundId = "rbxassetid://413861002" -- Sleigh Bells
+					bell.SoundId = "rbxassetid://134012322" -- Bell Sound
 					bell.Volume = 0.8
 					bell:Play()
 				elseif sound then 
@@ -810,7 +817,7 @@ local function createLevels()
 		
 		local sign = template:Clone()
 		-- Posición en el Lobby (cerca del spawn pero sin estorbar)
-		sign.Position = Vector3.new(15, 8, 15) 
+		sign.Position = Vector3.new(0, 10, -25) 
 		
 		-- Girar el cartel para que mire hacia el Spawn (0,0,0)
 		sign.CFrame = CFrame.lookAt(sign.Position, Vector3.new(0, sign.Position.Y, 0))

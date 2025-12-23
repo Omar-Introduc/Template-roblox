@@ -27,6 +27,15 @@ local ItemsData = {
 			Duration = 0, -- Instant use
 			Value = 1,
 			Attribute = "HasGhostCheckpoint"
+		},
+		{
+			Id = "PinguinoNavideño",
+			Name = "Pinguino Navideño",
+			Description = "Slide like a penguin! Extreme speed boost for 45s.",
+			Price = 500,
+			Duration = 45,
+			Value = 40,
+			Attribute = "PenguinMode"
 		}
 	}
 }

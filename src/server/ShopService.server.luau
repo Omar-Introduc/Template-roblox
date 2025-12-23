@@ -72,6 +72,30 @@ purchaseEvent.OnServerEvent:Connect(function(player, itemId)
 			task.spawn(applyJump, humanoid, item.Value, item.Duration)
 		elseif item.Id == "CheckpointSave" then
 			player:SetAttribute("HasGhostCheckpoint", true)
+		elseif item.Id == "PinguinoNavideño" then
+			task.spawn(function()
+				local hrp = char:FindFirstChild("HumanoidRootPart")
+				local attachment0 = Instance.new("Attachment", hrp)
+				attachment0.Position = Vector3.new(0, -1, 0)
+				local attachment1 = Instance.new("Attachment", hrp)
+				attachment1.Position = Vector3.new(0, -1.1, 0)
+
+				local trail = Instance.new("Trail")
+				trail.Name = "PenguinTrail"
+				trail.Attachment0 = attachment0
+				trail.Attachment1 = attachment1
+				trail.Color = ColorSequence.new(Color3.fromRGB(0, 200, 255))
+				trail.Lifetime = 0.5
+				trail.Transparency = NumberSequence.new(0.3, 1)
+				trail.WidthScale = NumberSequence.new(1, 0)
+				trail.Parent = hrp
+
+				applySpeed(humanoid, item.Value, item.Duration)
+				
+				if trail then trail:Destroy() end
+				if attachment0 then attachment0:Destroy() end
+				if attachment1 then attachment1:Destroy() end
+			end)
 		end
 	else
 		-- Optional: Send a fail message to client

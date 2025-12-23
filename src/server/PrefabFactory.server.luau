@@ -281,4 +281,5 @@ local readyVal = Instance.new("StringValue")
 readyVal.Name = "FactoryReady"
 readyVal.Value = "Ready"
 readyVal.Parent = templates
+templates:SetAttribute("PrefabReady", true)
 print("🏭 PrefabFactory: Ready signal sent!")

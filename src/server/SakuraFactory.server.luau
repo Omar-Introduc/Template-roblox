@@ -1,197 +1,135 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local _Debris = game:GetService("Debris")
 
--- Configuration constants for the tree (shared with the function)
-local TRUNK_COLOR = Color3.fromRGB(54, 41, 37)
-local LANTERN_COLOR = Color3.fromRGB(255, 230, 230)
+local COLORS = {
+	Wood = Color3.fromHex("#8B4513"),
+	Sakura1 = Color3.fromHex("#FFB7C5"),
+	Sakura2 = Color3.fromHex("#FF69B4"),
+	Sakura3 = Color3.fromHex("#FFC0CB"),
+	Grass = Color3.fromHex("#4CAF50"),
+	Stone = Color3.fromRGB(128, 128, 128)
+}
+
+local function box(name, size, pos, color, parent, rotation)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.Color = color
+	part.Material = Enum.Material.SmoothPlastic
+	part.CastShadow = true
+	part.Anchored = true
+	part.CanCollide = false
+	part.Position = pos
+	if rotation then
+		part.Rotation = rotation
+	end
+	part.Parent = parent
+	return part
+end
 
 local function createMasterSakuraTree(templates)
-	print("🌸 SakuraFactory: Generating Master Sakura Tree...")
+	print("🌸 SakuraFactory: Generating SakuraVoxel (Tokyo Edition)...")
 	local model = Instance.new("Model")
 	model.Name = "MasterSakuraTree"
 
-	-- 1. Trunk Construction (Organic Curve - 6 segments)
-	local lastCF = CFrame.new(0, 0, 0)
-	local segments = 6
-	local segHeight = 2.5
-	local trunkParts = {}
+	local treeRoot = Instance.new("Part")
+	treeRoot.Name = "Root"
+	treeRoot.Size = Vector3.new(0.1, 0.1, 0.1)
+	treeRoot.Transparency = 1
+	treeRoot.Anchored = true
+	treeRoot.CanCollide = false
+	treeRoot.Position = Vector3.new(0, 0, 0)
+	treeRoot.Parent = model
+	model.PrimaryPart = treeRoot
 
-	for i = 1, segments do
-		local part = Instance.new("Part")
-		part.Name = "TrunkSegment_" .. i
-		part.Size = Vector3.new(2.2 - (i * 0.2), segHeight + 0.1, 2.2 - (i * 0.2))
-		
-		-- Simple curve logic
-		local angle = math.rad(math.sin(i * 0.8) * 12)
-		local newCF = lastCF * CFrame.new(0, segHeight, 0) * CFrame.Angles(angle, 0, angle * 0.5)
-		
-		part.CFrame = newCF * CFrame.new(0, -segHeight/2, 0)
-		part.Color = TRUNK_COLOR
-		part.Material = Enum.Material.Wood
-		part.Anchored = true
-		part.Parent = model
-		
-		table.insert(trunkParts, part)
-		lastCF = newCF
+	-- 1. Zen Garden Base
+	local groundGroup = Instance.new("Model", model)
+	groundGroup.Name = "ZenGarden"
+	-- Base grass
+	box("GrassBase", Vector3.new(16, 1, 16), Vector3.new(0, -5, 0), COLORS.Grass, groundGroup)
+	-- Stones
+	local random = Random.new()
+	for i = 1, 6 do
+		local stonePos = Vector3.new(random:NextNumber(-5, 5), -5, random:NextNumber(-5, 5))
+		box("ZenStone", Vector3.new(1.5, 1.1, 1.5), stonePos, COLORS.Stone, groundGroup)
 	end
+
+	-- 2. TRUNK (Organic Voxel Curve)
+	local trunkGroup = Instance.new("Model", model)
+	trunkGroup.Name = "Trunk"
 	
-	model.PrimaryPart = trunkParts[1]
+	local _t1 = box("Trunk1", Vector3.new(2, 4, 2), Vector3.new(0, -2, 0), COLORS.Wood, trunkGroup)
+	local _t2 = box("Trunk2", Vector3.new(1.8, 3, 1.8), Vector3.new(0.2, 1, 0.2), COLORS.Wood, trunkGroup, Vector3.new(0, 0, -5))
+	local _t3 = box("Trunk3", Vector3.new(1.5, 3, 1.5), Vector3.new(0.5, 3.5, 0.5), COLORS.Wood, trunkGroup, Vector3.new(0, 0, -11))
 
-	-- Note: branchPositions removed as layers are generated relative to lastCF
+	-- 3. BRANCHES
+	local _branchL = box("BranchL", Vector3.new(1, 4, 1), Vector3.new(-2, 3, 0), COLORS.Wood, trunkGroup, Vector3.new(0, 0, 45))
+	local _branchR = box("BranchR", Vector3.new(0.8, 3.5, 0.8), Vector3.new(2, 4, 0.5), COLORS.Wood, trunkGroup, Vector3.new(0, 0, -35))
+	local _branchR2 = box("BranchR2", Vector3.new(0.8, 3.5, 0.8), Vector3.new(1, 4, -1.5), COLORS.Wood, trunkGroup, Vector3.new(-35, 0, 0))
 
-	-- 3. Canopy (Christmas Pine Transformation)
-	local canopyFolder = Instance.new("Folder")
-	canopyFolder.Name = "Canopy"
-	canopyFolder.Parent = model
+	-- 4. FOLLIAGE (Voxel Cloud Clusters)
+	local foliageGroup = Instance.new("Model", model)
+	foliageGroup.Name = "Foliage"
 
-	local ORNAMENT_COLORS = {
-		Color3.fromRGB(255, 0, 0), -- Red
-		Color3.fromRGB(255, 215, 0), -- Gold
-		Color3.fromRGB(0, 255, 0), -- Green
-		Color3.fromRGB(0, 100, 255) -- Blue
-	}
-
-	local function generatePineLayer(originCF, numClusters, radius, yOffset)
-		local random = Random.new()
+	local function createCluster(x, y, z, s, color)
+		local leaf = box("SakuraLeaf", Vector3.new(s, s*0.8, s), Vector3.new(x, y, z), color, foliageGroup)
+		box("SakuraLeafDetail1", Vector3.new(s*0.6, s*0.4, s*0.6), Vector3.new(x + s*0.4, y + s*0.3, z + s*0.4), color, foliageGroup)
+		box("SakuraLeafDetail2", Vector3.new(s*0.5, s*0.5, s*0.5), Vector3.new(x - s*0.3, y - s*0.2, z - s*0.3), color, foliageGroup)
 		
-		for i = 1, numClusters do
-			-- Fibonacci Sphere algorithm for distribution
-			local offset = 0.5
-			local phi = math.acos(1 - 2 * (i + offset) / (numClusters + 2 * offset))
-			local theta = math.pi * (1 + 5^0.5) * (i + offset)
-			
-			local x = math.cos(theta) * math.sin(phi)
-			local z = math.sin(theta) * math.sin(phi)
-			local y = math.cos(phi)
-			
-			-- Flatten Y to create a layer-like look
-			y = y * 0.3
-			
-			local clusterPos = originCF.Position + Vector3.new(x * radius, y + yOffset, z * radius)
-			
-			local cluster = Instance.new("Part")
-			cluster.Name = "PineCluster"
-			cluster.Shape = Enum.PartType.Ball
-			cluster.Size = Vector3.new(radius * 0.6, radius * 0.4, radius * 0.6)
-			cluster.Position = clusterPos
-			cluster.Rotation = Vector3.new(random:NextNumber(0, 360), random:NextNumber(0, 360), random:NextNumber(0, 360))
-			
-			-- Performance & Visuals
-			cluster.CastShadow = false
-			cluster.CanCollide = false
-			cluster.Anchored = true
-			cluster.Color = Color3.fromRGB(34, 139, 34) -- Forest Green base
-			cluster.Material = Enum.Material.Snow -- Snowy finish
-			cluster.Parent = canopyFolder
-			
-			-- Random Ornaments
-			if math.random() < 0.2 then
-				local ornament = Instance.new("Part")
-				ornament.Name = "Ornament"
-				ornament.Shape = Enum.PartType.Ball
-				ornament.Size = Vector3.new(0.4, 0.4, 0.4)
-				ornament.Position = clusterPos + (Vector3.new(x, y, z).Unit * (radius * 0.3))
-				ornament.Color = ORNAMENT_COLORS[math.random(1, #ORNAMENT_COLORS)]
-				ornament.Material = Enum.Material.Neon
-				ornament.Anchored = true
-				ornament.Parent = canopyFolder
-			end
-
-			-- Periodic Snowflakes
-			if i % 10 == 0 then
-				local particles = Instance.new("ParticleEmitter")
-				particles.Name = "SnowFlakes"
-				particles.Texture = "rbxassetid://242211797"
-				particles.Color = ColorSequence.new(Color3.new(1, 1, 1))
-				particles.Size = NumberSequence.new(0.2, 0.5)
-				particles.Lifetime = NumberRange.new(2, 4)
-				particles.Rate = 2
-				particles.Speed = NumberRange.new(1, 3)
-				particles.Acceleration = Vector3.new(0, -0.5, 0)
-				particles.Parent = cluster
-			end
-		end
-	end
-
-	-- 4. Build Layers (Bottom to Top - Conical)
-	local trunkTop = lastCF
-	generatePineLayer(trunkTop * CFrame.new(0, -6, 0), 30, 10, 0) -- Bottom
-	generatePineLayer(trunkTop * CFrame.new(0, -2, 0), 25, 8, 0)  -- Mid-Bottom
-	generatePineLayer(trunkTop * CFrame.new(0, 2, 0), 20, 6, 0)   -- Mid-Top
-	generatePineLayer(trunkTop * CFrame.new(0, 5, 0), 12, 3.5, 0) -- Top
-
-	-- 5. Christmas Star
-	local starPos = trunkTop.Position + Vector3.new(0, 7.5, 0)
-	local star = Instance.new("Part")
-	star.Name = "ChristmasStar"
-	star.Shape = Enum.PartType.Ball
-	star.Size = Vector3.new(1.5, 1.5, 1.5)
-	star.Position = starPos
-	star.Color = Color3.fromRGB(255, 255, 0)
-	star.Material = Enum.Material.Neon
-	star.Anchored = true
-	star.Parent = model
-
-	local starLight = Instance.new("PointLight")
-	starLight.Range = 20
-	starLight.Brightness = 5
-	starLight.Color = Color3.fromRGB(255, 230, 100)
-	starLight.Parent = star
-
-	-- 4. Premium Lanterns
-	local function createLantern(attachPart, offset)
-		local lanternModel = Instance.new("Model")
-		lanternModel.Name = "SakuraLantern"
-		lanternModel.Parent = model
-		
-		local rope = Instance.new("Part")
-		rope.Size = Vector3.new(0.1, 2, 0.1)
-		rope.Position = attachPart.Position + offset + Vector3.new(0, 1, 0)
-		rope.Color = Color3.new(0, 0, 0)
-		rope.Anchored = true
-		rope.Parent = lanternModel
-		
-		local body = Instance.new("Part")
-		body.Shape = Enum.PartType.Cylinder
-		body.Size = Vector3.new(1.8, 1, 1) -- Height is Y in cylinder
-		body.CFrame = CFrame.new(attachPart.Position + offset) * CFrame.Angles(0, 0, math.rad(90))
-		body.Color = LANTERN_COLOR
-		body.Material = Enum.Material.Neon
-		body.Anchored = true
-		body.Parent = lanternModel
-		
+		-- Three.js style internal glow
 		local light = Instance.new("PointLight")
-		light.Range = 15
-		light.Brightness = 3
-		light.Color = Color3.fromRGB(255, 180, 180)
-		light.Parent = body
-		
-		-- Small decorative caps
-		local cap1 = Instance.new("Part")
-		cap1.Size = Vector3.new(0.2, 1.1, 1.1)
-		cap1.CFrame = body.CFrame * CFrame.new(0.9, 0, 0)
-		cap1.Color = TRUNK_COLOR
-		cap1.Anchored = true
-		cap1.Parent = lanternModel
-		
-		local cap2 = cap1:Clone()
-		cap2.CFrame = body.CFrame * CFrame.new(-0.9, 0, 0)
-		cap2.Parent = lanternModel
+		light.Color = color
+		light.Brightness = 0.5
+		light.Range = s * 2
+		light.Parent = leaf
 	end
 
-	createLantern(trunkParts[#trunkParts], Vector3.new(4, -2, 2))
-	createLantern(trunkParts[#trunkParts], Vector3.new(-4, -3, -1))
-	createLantern(trunkParts[#trunkParts-1], Vector3.new(0, -4, 5))
+	-- Distribution as per references
+	createCluster(0, 6, 0, 3.5, COLORS.Sakura1)
+	createCluster(1, 7, 1, 2.5, COLORS.Sakura2)
+	createCluster(-1, 6.5, -1, 3, COLORS.Sakura3)
 
-	-- 5. No movement requested (Animation tag removed)
+	createCluster(-3.5, 4.5, 0, 2.8, COLORS.Sakura2)
+	createCluster(-4.5, 5.5, 1, 2, COLORS.Sakura1)
+	createCluster(-2.5, 3.5, -1.5, 2.2, COLORS.Sakura3)
 
+	createCluster(3.5, 5, 0.5, 3, COLORS.Sakura1)
+	createCluster(4.5, 4, -1, 2.2, COLORS.Sakura3)
+	createCluster(2.5, 6, 2, 2.5, COLORS.Sakura2)
+
+	createCluster(0, 5, 3, 2.5, COLORS.Sakura2)
+	createCluster(0.5, 5.5, -3, 2.8, COLORS.Sakura1)
+
+	-- 5. PETAL RAIN (Voxel Particle system)
+	local petalEmitterPart = Instance.new("Part")
+	petalEmitterPart.Name = "PetalEmitter"
+	petalEmitterPart.Size = Vector3.new(15, 1, 15)
+	petalEmitterPart.Transparency = 1
+	petalEmitterPart.Anchored = true
+	petalEmitterPart.CanCollide = false
+	petalEmitterPart.Position = Vector3.new(0, 15, 0)
+	petalEmitterPart.Parent = model
+
+	local petalEmitter = Instance.new("ParticleEmitter")
+	petalEmitter.Name = "VoxelPetals"
+	petalEmitter.Texture = "rbxassetid://15444645258" -- Small square voxel texture
+	petalEmitter.Color = ColorSequence.new(COLORS.Sakura3)
+	petalEmitter.Size = NumberSequence.new(0.2, 0.5)
+	petalEmitter.Lifetime = NumberRange.new(5, 10)
+	petalEmitter.Rate = 15
+	petalEmitter.Speed = NumberRange.new(2, 5)
+	petalEmitter.VelocitySpread = 180
+	petalEmitter.Rotation = NumberRange.new(0, 360)
+	petalEmitter.RotSpeed = NumberRange.new(50, 100)
+	petalEmitter.Acceleration = Vector3.new(1, -2, 0.5) -- Simulated Wind
+	petalEmitter.Parent = petalEmitterPart
+
+	templates:SetAttribute("SakuraReady", true)
 	model.Parent = templates
-	print("✅ SakuraFactory: Master Sakura Tree created successfully.")
+	print("✅ SakuraFactory: Voxel Sakura Tree (Tokyo Edition) ready in Templates.")
 end
 
--- Start initialization
 local templates = ReplicatedStorage:WaitForChild("Templates", 10)
 if templates then
 	createMasterSakuraTree(templates)
-else
-	warn("❌ SakuraFactory: Could not find Templates folder!")
 end
