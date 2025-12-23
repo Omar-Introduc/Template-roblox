@@ -26,6 +26,10 @@ local function createMasterBlock()
 	-- Optimized Physics
 	block.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5) -- Friction = 1
 
+	-- Festive Style (Default to Ice Blue)
+	block.Material = Enum.Material.Neon
+	block.Color = Color3.fromRGB(180, 240, 255)
+
 	-- Neon Border SelectionBox
 	local selectionBox = Instance.new("SelectionBox")
 	selectionBox.Name = "NeonBorder"
@@ -76,6 +80,37 @@ local function createMasterBlock()
 	jumpSound.Parent = block
 
 	block.Parent = templates
+end
+
+local function createBombGift()
+	local model = Instance.new("Model")
+	model.Name = "BombGift"
+	
+	local box = Instance.new("Part")
+	box.Name = "Handle"
+	box.Size = Vector3.new(4, 4, 4)
+	box.Color = Color3.fromRGB(255, 0, 0)
+	box.Material = Enum.Material.Fabric
+	box.Anchored = true
+	box.Parent = model
+	
+	-- Festive Ribbon (Cross)
+	local r1 = Instance.new("Part")
+	r1.Size = Vector3.new(4.1, 0.5, 1)
+	r1.Color = Color3.fromRGB(0, 200, 0)
+	r1.Material = Enum.Material.Neon
+	r1.Anchored = true
+	r1.CFrame = box.CFrame
+	r1.Parent = model
+	
+	local r2 = r1:Clone()
+	r2.Size = Vector3.new(1, 0.5, 4.1)
+	r2.Parent = model
+	
+	-- Tag for Identification
+	CollectionService:AddTag(box, "GiftBomb")
+	model.PrimaryPart = box
+	model.Parent = templates
 end
 
 local function createMasterPlatform()
@@ -235,9 +270,8 @@ local function createPhysicalShopSign()
 	mainBtn.TextColor3 = Color3.new(1, 1, 1)
 end
 
--- 4. Signal Ready
-print("🏭 PrefabFactory: Creating Master Prefabs...")
 createMasterBlock()
+createBombGift()
 createMasterPlatform()
 createMasterPad()
 createMasterGem()

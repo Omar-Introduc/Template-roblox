@@ -19,41 +19,41 @@ if not ready then
 end
 print("🏃 ParkourSystem: Factory is ready. Starting level generation...")
 
--- 1. Configuration: Path & Levels (Optimized Spiral)
+-- 1. Configuration: Path & Levels (EXPANDED Spacing)
 local LEVEL_CONFIGS = {
-	{ Position = Vector3.new(150, 35, 0), Name = "Level1" },
-	{ Position = Vector3.new(0, 70, 150), Name = "Level2" },
-	{ Position = Vector3.new(-150, 105, 0), Name = "Level3" },
-	{ Position = Vector3.new(0, 140, -150), Name = "Level4" },
+	{ Position = Vector3.new(300, 45, 0), Name = "Christmas 1" },
+	{ Position = Vector3.new(0, 90, 300), Name = "Christmas 2" },
+	{ Position = Vector3.new(-300, 135, 0), Name = "Christmas 3" },
+	{ Position = Vector3.new(0, 180, -300), Name = "Christmas 4" },
 }
 
 local BIOME_CONFIG = {
 	[1] = {
-		Name = "Level1",
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(0, 255, 100),
-		ParticleColor = ColorSequence.new(Color3.fromRGB(50, 200, 50)),
-		Texture = "rbxassetid://6736340536"
+		Name = "NivelNavideño1",
+		Material = Enum.Material.Ice, -- Hielo resbaladizo
+		Color = Color3.fromRGB(200, 240, 255), -- Blanco azulado
+		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 255, 255)), -- Nieve
+		Texture = "rbxassetid://1265613143" -- Escarcha
 	},
 	[2] = {
-		Name = "Level2",
-		Material = Enum.Material.Glass,
-		Color = Color3.fromRGB(0, 150, 255),
-		ParticleColor = ColorSequence.new(Color3.fromRGB(150, 220, 255)),
-		Texture = "rbxassetid://243004475"
+		Name = "Christmas 2",
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(200, 0, 0), -- Festive Red
+		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 255, 0)),
+		Texture = "rbxassetid://585426142"
 	},
 	[3] = {
-		Name = "Level3",
-		Material = Enum.Material.CrackedLava,
-		Color = Color3.fromRGB(255, 80, 0),
-		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 100, 0), Color3.fromRGB(255, 200, 0)),
-		Texture = "rbxassetid://242291244"
+		Name = "Christmas 3",
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(0, 200, 0), -- Festive Green
+		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 255, 255)),
+		Texture = "rbxassetid://244221440"
 	},
 	[4] = {
-		Name = "Level4",
-		Material = Enum.Material.ForceField,
-		Color = Color3.fromRGB(180, 0, 255),
-		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(180, 0, 255)),
+		Name = "Christmas 4",
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 255, 255), -- Snow White
+		ParticleColor = ColorSequence.new(Color3.fromRGB(200, 200, 255)),
 		Texture = "rbxassetid://585426142"
 	}
 }
@@ -114,17 +114,30 @@ local function applyBiome(part, biome)
 end
 
 local function makePlatformMove(block, levelIndex)
-	local distance = 5 + levelIndex -- Más rango de movimiento en niveles altos
+	local distance = 5 + levelIndex
 	local speed = 2 -- Segundos por ciclo
 	local originalPos = block.Position
-	-- Dirección aleatoria horizontal
 	local direction = Vector3.new(math.random(-100, 100)/100, 0, math.random(-100, 100)/100).Unit
 	
 	task.spawn(function()
 		while block and block.Parent do
-			local offset = math.sin(tick() * (math.pi / speed)) * distance
-			block.Position = originalPos + (direction * offset)
+			local time = tick()
+			local offset = math.sin(time * (math.pi / speed)) * distance
+			local nextOffset = math.sin((time + 0.03) * (math.pi / speed)) * distance
+			
+			local newPos = originalPos + (direction * offset)
+			local nextPos = originalPos + (direction * nextOffset)
+			
+			-- Calcular velocidad para que el motor de física mueva al jugador
+			local velocity = (nextPos - newPos) / 0.03
+			block.AssemblyLinearVelocity = velocity
+			
+			-- Sincronizar CFrame
+			block.CFrame = CFrame.new(newPos)
 			task.wait()
+		end
+		if block then
+			block.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 		end
 	end)
 end
@@ -191,6 +204,41 @@ local function applyRewards(player, stage)
 end
 
 -- Appearance handled on client via ParkourClient
+
+local function setupChristmasAtmosphere()
+	local Lighting = game:GetService("Lighting")
+	
+	-- Sky settings
+	Lighting.ClockTime = 0 -- Midnight
+	Lighting.OutdoorAmbient = Color3.fromRGB(30, 30, 60)
+	Lighting.FogColor = Color3.fromRGB(20, 20, 40)
+	Lighting.FogEnd = 500
+	
+	-- Snow Emitter (Attached to a part that follows the lobby/center)
+	local snowPart = Instance.new("Part")
+	snowPart.Name = "SnowEmitterPart"
+	snowPart.Size = Vector3.new(1000, 1, 1000)
+	snowPart.Position = Vector3.new(0, 300, 0)
+	snowPart.Anchored = true
+	snowPart.Transparency = 1
+	snowPart.CanCollide = false
+	snowPart.Parent = Workspace
+	
+	local snow = Instance.new("ParticleEmitter")
+	snow.Name = "GlobalSnow"
+	snow.Texture = "rbxassetid://242291244" -- Snow flake
+	snow.Size = NumberSequence.new(0.5, 1.5)
+	snow.Color = ColorSequence.new(Color3.new(1, 1, 1))
+	snow.Transparency = NumberSequence.new(0, 0.5)
+	snow.Lifetime = NumberRange.new(5, 10)
+	snow.Rate = 500
+	snow.Speed = NumberRange.new(20, 50)
+	snow.VelocitySpread = 10
+	snow.EmissionDirection = Enum.NormalId.Bottom
+	snow.Parent = snowPart
+end
+
+setupChristmasAtmosphere()
 
 local function createCountdown(block, duration)
 	block:SetAttribute("RemainingTime", duration)
@@ -274,25 +322,114 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 		finalPos = Vector3.new(horizontalOffset.X, finalPos.Y, horizontalOffset.Z)
 	end
 	
-	-- 6. Clone & Setup Block
-	local block = folder.MasterBlock:Clone()
-	block.Name = "Path_" .. player.Name
-	block.Position = finalPos
-	block.Parent = Workspace
+	-- 6. Clone & Setup Block (GIFT BOMB CHANCE)
+	local block
+	local isBomb = math.random() < 0.1
 	
-	if willMove then
-		block.Color = Color3.fromRGB(255, 255, 0) -- Amarillo = Peligro/Móvil
-		makePlatformMove(block, levelIndex)
-	end
+	if isBomb then
+		block = folder.BombGift:Clone()
+		block.Name = "Path_" .. player.Name .. "_BOMB"
+		block:SetPrimaryPartCFrame(CFrame.new(finalPos))
+		block.Parent = Workspace
+		
+		local handle = block.PrimaryPart
+		handle.Touched:Connect(function(hit)
+			local char = hit.Parent
+			local humrp = char:FindFirstChild("HumanoidRootPart")
+			if humrp then
+				local pushDir = (humrp.Position - handle.Position).Unit
+				humrp.AssemblyLinearVelocity = (pushDir + Vector3.new(0, 0.5, 0)) * 100
+				
+				-- Explosion effect
+				local exp = Instance.new("Explosion")
+				exp.Position = handle.Position
+				exp.BlastRadius = 0
+				exp.Parent = Workspace
 
-	-- Tip Adicional: Trampa Nivel 4 (Se rompe más rápido)
-	if levelIndex == 4 and math.random() < 0.5 then
-		block:SetAttribute("MaxTouches", 1)
-		block.Transparency = 0.5 -- Visual cue that it's fragile
+				-- Festive Bang
+				local bang = Instance.new("Sound", Workspace)
+				bang.SoundId = "rbxassetid://157070148" -- Explosion/Bang sound
+				bang.Volume = 1
+				bang.PlayOnRemove = true
+				bang:Play()
+				bang:Destroy()
+				
+				task.wait(0.1)
+				block:Destroy()
+			end
+		end)
+	else
+		block = folder.MasterBlock:Clone()
+		block.Name = "Path_" .. player.Name
+		block.Position = finalPos
+		block.Parent = Workspace
+		
+		if willMove then
+			block.Color = Color3.fromRGB(255, 255, 0) -- Amarillo = Peligro/Móvil
+			makePlatformMove(block, levelIndex)
+		end
+		
+		-- Tip Adicional: Trampa Nivel 4 (Se rompe más rápido)
+		if levelIndex == 4 and math.random() < 0.5 then
+			block:SetAttribute("MaxTouches", 1)
+			block.Transparency = 0.5 -- Visual cue that it's fragile
+		end
+		
+		-- Apply Biome Skin
+		applyBiome(block, biome)
+
+		-- SPECIAL: Level 1 Christmas Features
+		if levelIndex == 1 then
+			-- 1. Slippery Ice Physics
+			if math.random() < 0.3 then
+				block.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0.3, 0.5) -- Very slippery
+				block.Color = Color3.fromRGB(220, 255, 255) -- Brighter ice cue
+			end
+
+			-- 2. Festive Flashing Lights (More Variety)
+			local light = Instance.new("PointLight")
+			light.Range = 15
+			light.Brightness = 2
+			light.Parent = block
+			
+			local colors = {
+				Color3.new(1, 0, 0),   -- Red
+				Color3.new(0, 1, 0),   -- Green
+				Color3.fromRGB(255, 215, 0), -- Gold
+				Color3.new(1, 1, 1)    -- White
+			}
+
+			task.spawn(function()
+				local i = 1
+				while block and block.Parent do
+					light.Color = colors[i]
+					i = (i % #colors) + 1
+					task.wait(1)
+				end
+			end)
+
+			-- 3. Snow Piles
+			local numPiles = math.random(2, 4)
+			for j = 1, numPiles do
+				local pile = Instance.new("Part")
+				pile.Name = "SnowPile"
+				pile.Shape = Enum.PartType.Ball
+				local size = math.random(15, 30) / 10
+				pile.Size = Vector3.new(size, size * 0.5, size)
+				
+				-- Random pos on top of block
+				local relX = (math.random() - 0.5) * block.Size.X * 0.8
+				local relZ = (math.random() - 0.5) * block.Size.Z * 0.8
+				pile.Position = block.Position + Vector3.new(relX, block.Size.Y/2, relZ)
+				
+				pile.Material = Enum.Material.Snow
+				pile.Color = Color3.new(1, 1, 1)
+				pile.Anchored = true
+				pile.CanCollide = false
+				pile.Parent = block
+			end
+		end
 	end
-	
-	-- Apply Biome Skin
-	applyBiome(block, biome)
 	
 	-- 30% Chance to Spawn a Gem
 	if math.random() <= 0.3 then
@@ -330,7 +467,15 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 				
 				-- Feedback Musical y Visual
 				local sound = gem:FindFirstChild("GemSound")
-				if sound then sound:Play() end
+				if levelIndex == 1 then
+					-- Overwrite with festive bells for Level 1
+					local bell = Instance.new("Sound", gem)
+					bell.SoundId = "rbxassetid://413861002" -- Sleigh Bells
+					bell.Volume = 0.8
+					bell:Play()
+				elseif sound then 
+					sound:Play() 
+				end
 				
 				-- Popup de texto
 				local part = Instance.new("Part")
@@ -382,7 +527,11 @@ end
 
 setupBlockEvents = function(player, block)
 	local triggered = false
-	block.Touched:Connect(function(hit)
+	local touchPart = (block:IsA("Model") and block.PrimaryPart) or block
+	
+	if not touchPart then return end
+
+	touchPart.Touched:Connect(function(hit)
 		if triggered then return end
 		local char = hit.Parent
 		local p = Players:GetPlayerFromCharacter(char)
@@ -395,12 +544,17 @@ setupBlockEvents = function(player, block)
 				triggered = true
 				
 				-- JUICE: Sound & Step-down animation
-				local sound = block:FindFirstChild("JumpSound")
+				local sound = block:FindFirstChild("JumpSound") or block:FindFirstChild("JumpSound", true)
 				if sound then sound:Play() end
 				
-				local originalPos = block.Position
+				local originalPos = (block:IsA("Model") and block:GetPivot().Position) or block.Position
 				local stepInfo = TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-				TweenService:Create(block, stepInfo, {Position = originalPos - Vector3.new(0, 0.3, 0)}):Play()
+				
+				if block:IsA("Model") then
+					TweenService:Create(block.PrimaryPart, stepInfo, {Position = originalPos - Vector3.new(0, 0.3, 0)}):Play()
+				else
+					TweenService:Create(block, stepInfo, {Position = originalPos - Vector3.new(0, 0.3, 0)}):Play()
+				end
 				
 				-- Set an attribute to let the client know it was stepped on (for UI pulse)
 				block:SetAttribute("Stepped", true)
@@ -578,6 +732,24 @@ local function createLevels()
 					playerProgress[player] = i
 					print(player.Name .. " UNLOCKED " .. config.Name)
 					
+					-- Checkpoint logic: Spawn player on this platform from now on
+					local checkpoint = levelPlatform:FindFirstChild("CheckpointSpawn")
+					if not checkpoint then
+						checkpoint = Instance.new("SpawnLocation")
+						checkpoint.Name = "CheckpointSpawn"
+						checkpoint.Size = Vector3.new(1, 1, 1)
+						checkpoint.Position = levelPlatform.Position + Vector3.new(0, 5, 0)
+						checkpoint.Transparency = 1
+						checkpoint.CanCollide = false
+						checkpoint.Enabled = true
+						checkpoint.Duration = 0
+						checkpoint.Parent = levelPlatform
+						
+						local decal = checkpoint:FindFirstChildOfClass("Decal")
+						if decal then decal:Destroy() end
+					end
+					player.RespawnLocation = checkpoint
+
 					-- Update Leaderstats
 					local ls = player:FindFirstChild("leaderstats")
 					if ls then

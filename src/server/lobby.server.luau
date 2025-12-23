@@ -1,6 +1,7 @@
 -- Lobby Island and Deadly Ocean Setup Script (MEJORADO)
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Configuración
 local LOBBY_SIZE = 80
@@ -21,58 +22,14 @@ end
 
 -- Función para crear un Árbol de Cerezo (Sakura)
 local function createCherryTree(position, parent)
-	local treeFolder = Instance.new("Model")
-	treeFolder.Name = "CherryTree"
-	treeFolder.Parent = parent
-
-	-- Tronco
-	local trunk = Instance.new("Part")
-	trunk.Name = "Trunk"
-	trunk.Size = Vector3.new(2, 10, 2)
-	trunk.Position = position + Vector3.new(0, 5, 0)
-	trunk.Anchored = true
-	trunk.BrickColor = BrickColor.new("Reddish brown")
-	trunk.Material = Enum.Material.Wood
-	trunk.Parent = treeFolder
-
-	-- Hojas (Copa del árbol)
-	local function createLeafCluster(offset, size)
-		local leaves = Instance.new("Part")
-		leaves.Name = "Leaves"
-		leaves.Shape = Enum.PartType.Ball
-		leaves.Size = size
-		leaves.Position = trunk.Position + Vector3.new(0, 5, 0) + offset
-		leaves.Anchored = true
-		leaves.BrickColor = BrickColor.new("Pink")
-		leaves.Material = Enum.Material.Grass -- Para darle algo de textura
-		leaves.CanCollide = false
-		leaves.Parent = treeFolder
-
-		-- Partículas de pétalos cayendo
-		local particles = Instance.new("ParticleEmitter")
-		particles.Name = "Petals"
-		particles.Color = ColorSequence.new(Color3.fromRGB(255, 192, 203))
-		particles.Size = NumberSequence.new(0.2, 0)
-		particles.Lifetime = NumberRange.new(2, 5)
-		particles.Rate = 5
-		particles.Speed = NumberRange.new(2, 5)
-		particles.SpreadAngle = Vector2.new(45, 45)
-		particles.Texture = "rbxassetid://2415370814" -- Textura de copo/hoja pequeña
-		particles.Acceleration = Vector3.new(0, -1, 0)
-		particles.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0),
-			NumberSequenceKeypoint.new(0.8, 0),
-			NumberSequenceKeypoint.new(1, 1)
-		})
-		particles.Parent = leaves
-	end
-
-	createLeafCluster(Vector3.new(0, 0, 0), Vector3.new(8, 8, 8))
-	createLeafCluster(Vector3.new(3, -2, 2), Vector3.new(5, 5, 5))
-	createLeafCluster(Vector3.new(-3, -2, -2), Vector3.new(5, 5, 5))
-	createLeafCluster(Vector3.new(2, -2, -3), Vector3.new(5, 5, 5))
+	local Templates = ReplicatedStorage:WaitForChild("Templates")
+	local tree = Templates:WaitForChild("MasterSakuraTree"):Clone()
 	
-	print("🌸 Árbol de cerezo añadido.")
+	-- Posicionamos el modelo
+	tree:SetPrimaryPartCFrame(CFrame.new(position))
+	tree.Parent = parent
+	
+	print("🌸 Árbol de cerezo profesional añadido.")
 end
 
 -- Función para crear el Lobby con seguridad
@@ -100,20 +57,28 @@ local function createLobbyIsland()
 	createWall(Vector3.new(-halfSize, WALL_HEIGHT/2, 0), Vector3.new(wallThick, WALL_HEIGHT, LOBBY_SIZE), lobbyIsland)
 
 	-- 3. SpawnLocation (Invisible and functional)
+	-- 3. SpawnLocation (DEFINITIVE INVISIBLE FIX)
 	local spawnLocation = Instance.new("SpawnLocation")
 	spawnLocation.Name = "LobbySpawn"
-	spawnLocation.Size = Vector3.new(10, 0.1, 10) -- Más delgado para evitar interferencias
-	spawnLocation.Position = Vector3.new(0, 1.1, 0) -- 1.1 asegura que esté ARRIBA del suelo (Y=1.0)
+	spawnLocation.Size = Vector3.new(1, 1, 1) -- Small enough but safe
+	spawnLocation.Position = Vector3.new(0, 1.5, 0) -- Elevated safely (top of floor is 1.0)
 	spawnLocation.Anchored = true
-	spawnLocation.Transparency = 1 -- Completamente invisible
+	spawnLocation.Transparency = 1 
+	spawnLocation.CastShadow = false -- Critical optimization
 	spawnLocation.CanCollide = false
 	spawnLocation.CanTouch = false
-	spawnLocation.Duration = 0
+	spawnLocation.Duration = 0 
 	spawnLocation.Parent = Workspace
 	
-	-- Eliminar el logo por defecto si existe
-	local decal = spawnLocation:FindFirstChildOfClass("Decal")
-	if decal then decal:Destroy() end
+	-- Robust Decal Removal
+	spawnLocation.ChildAdded:Connect(function(child)
+		if child:IsA("Decal") then child:Destroy() end
+	end)
+	for _, child in ipairs(spawnLocation:GetChildren()) do
+		if child:IsA("Decal") then child:Destroy() end
+	end
+	
+	print("🎯 Spawn del Lobby arreglado definitivamente.")
 
 	-- 4. Añadir Árboles de Cerezo para decorar
 	createCherryTree(Vector3.new(20, 1, 20), lobbyIsland)
@@ -148,7 +113,7 @@ local function createDeadlyOcean()
 			
 			-- Splash Sound
 			local splash = Instance.new("Sound", hit)
-			splash.SoundId = "rbxassetid://6831034444" -- Water Splash
+			splash.SoundId = "rbxassetid://193551353" -- Valid Water Splash
 			splash.Volume = 0.8
 			splash.PlayOnRemove = true
 			splash:Play()
@@ -162,10 +127,19 @@ local function createDeadlyOcean()
 end
 
 local function cleanupBaseplate()
+	-- 1. Eliminar Baseplate original
 	local baseplate = Workspace:FindFirstChild("Baseplate")
 	if baseplate then
 		baseplate:Destroy()
 		print("🗑️ Baseplate eliminado.")
+	end
+
+	-- 2. Eliminar Spawns por defecto para evitar duplicados
+	for _, item in ipairs(Workspace:GetChildren()) do
+		if item:IsA("SpawnLocation") and item.Name ~= "LobbySpawn" then
+			item:Destroy()
+			print("🗑️ Spawn por defecto '" .. item.Name .. "' eliminado.")
+		end
 	end
 end
 
