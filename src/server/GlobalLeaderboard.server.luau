@@ -137,6 +137,14 @@ end
 
 -- 3. Data Store Management
 local function refreshLeaderboard()
+	local RunService = game:GetService("RunService")
+	if RunService:IsStudio() then
+		-- In Studio, DataStore often fails without API access enabled.
+		-- Mocking or suppressing to avoid console spam.
+		print("📊 [LEADERBOARD] Studio Mode: Skipping DataStore fetch.")
+		return
+	end
+
 	print("📊 [LEADERBOARD] Refreshing global scores...")
 	local success, pages = pcall(function()
 		return MaxStageStore:GetSortedAsync(false, 10)
@@ -151,6 +159,9 @@ local function refreshLeaderboard()
 end
 
 local function savePlayerScore(player)
+	local RunService = game:GetService("RunService")
+	if RunService:IsStudio() then return end
+
 	local stage = player:GetAttribute("Stage") or 0
 	if stage > 0 then
 		pcall(function()

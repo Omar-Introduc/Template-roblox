@@ -126,7 +126,9 @@ local function setupCharizardVisuals(model)
 			
 			-- Sound
 			local roarSound = Instance.new("Sound")
-			roarSound.SoundId = "rbxassetid://6201391963" -- Dragon Roar
+			-- roarSound.SoundId = "rbxassetid://6201391963" -- Dragon Roar (Broken ID)
+			roarSound.SoundId = "rbxassetid://12222208" -- Temporary Placeholder (Explosion) or leave muted
+			roarSound.Pitch = 0.5 -- Deep pitch to simulate roar
 			roarSound.Volume = 1.5
 			roarSound.RollOffMaxDistance = 100
 			roarSound.Parent = head
