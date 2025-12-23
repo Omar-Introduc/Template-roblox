@@ -1,17 +1,18 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
+local CollectionService = game:GetService("CollectionService") -- FALTA ESTA LÍNEA
 
 -- Configuration
 local TARGET_POS = Vector3.new(400, 150, 400) -- Dónde está la isla de lava
 local LOBBY_CENTER = Vector3.new(0, 0, 0)
 local BLOCK_SIZE = Vector3.new(10, 1, 10)
-local CLEANUP_TIME = 10 -- Tiempo antes de que los bloques viejos desaparezcan solos
+local CLEANUP_TIME = 5 -- Tiempo en segundos antes de que desaparezca el bloque
 
 -- Player Data: Stores current path and ALL blocks for cleanup
 local playerPaths = {}
 
--- 1. Create Destination (Lava Island) - (Igual que antes)
+-- 1. Create Destination (Lava Island)
 local function createLavaIsland()
 	local island = Instance.new("Part")
 	island.Name = "LavaIsland"
@@ -63,9 +64,10 @@ local function spawnNextBlock(player, currentBlock)
 	block.Size = BLOCK_SIZE
 	block.Position = newPos
 	block.Anchored = true
+	
 	-- Crystal Logic Integration
 	CollectionService:AddTag(block, "Crystal")
-	block:SetAttribute("IgnoreTouches", true)
+	block:SetAttribute("IgnoreTouches", true) -- IMPORTANTE: Requiere actualizar CrystalService
 
 	block.Parent = Workspace
 	block.CFrame = CFrame.lookAt(newPos, newPos + horizontalDir)
@@ -75,8 +77,8 @@ local function spawnNextBlock(player, currentBlock)
 		table.insert(playerPaths[player].AllBlocks, block)
 	end
 	
-	-- Auto-destrucción por tiempo
-	game:GetService("Debris"):AddItem(block, 5)
+	-- Auto-destrucción por tiempo (Usando la variable CLEANUP_TIME)
+	Debris:AddItem(block, CLEANUP_TIME)
 
 	return block
 end
@@ -122,6 +124,7 @@ local function startPath(player)
 	block.Size = BLOCK_SIZE
 	block.Position = spawnPos
 	block.Anchored = true
+	
 	-- Crystal Logic Integration
 	CollectionService:AddTag(block, "Crystal")
 	block:SetAttribute("IgnoreTouches", true)
@@ -130,7 +133,7 @@ local function startPath(player)
 	block.CFrame = CFrame.lookAt(spawnPos, spawnPos + horizontalDir)
 
 	-- Auto-destrucción por tiempo
-	game:GetService("Debris"):AddItem(block, 5)
+	Debris:AddItem(block, CLEANUP_TIME)
 
 	-- Inicializar datos del jugador
 	playerPaths[player] = { 
