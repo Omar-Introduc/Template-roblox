@@ -2,6 +2,11 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local CollectionService = game:GetService("CollectionService")
+local ServerStorage = game:GetService("ServerStorage")
+
+-- Wait for Factory
+local Templates = ServerStorage:WaitForChild("Templates")
+Templates:WaitForChild("FactoryReady")
 
 -- 1. Modular Spiral Level Layout
 local LEVEL_CONFIGS = {
@@ -37,19 +42,14 @@ local cleanupPlayerPath
 --------------------------------------------------------------------------------
 
 local function createCountdown(block, duration)
-	local surfaceGui = Instance.new("SurfaceGui")
-	surfaceGui.Face = Enum.NormalId.Top
-	surfaceGui.Parent = block
+	-- Look for the SurfaceGui and Label created by Factory
+	local surfaceGui = block:WaitForChild("TimerGui", 5)
+	if not surfaceGui then return end
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.TextScaled = true
-	label.Font = Enum.Font.GothamBold
-	label.TextColor3 = Color3.new(1, 0, 0) -- Red
-	label.TextStrokeTransparency = 0.5
+	local label = surfaceGui:WaitForChild("TimerLabel", 5)
+	if not label then return end
+
 	label.Text = tostring(duration) .. ".0"
-	label.Parent = surfaceGui
 
 	task.spawn(function()
 		local remaining = duration
@@ -110,24 +110,15 @@ function spawnNextBlock(player, currentBlock)
 	-- We only modify X and Z. Y is determined by the 'Invisible Line' (idealPos.Y)
 	local finalPos = Vector3.new(idealPos.X + offsetX, idealPos.Y, idealPos.Z + offsetZ)
 
-	-- Create Block
-	local block = Instance.new("Part")
+	-- Create Block from Prefab
+	local block = Templates.ParkourBlock:Clone()
 	block.Name = "Path_" .. player.Name
-	block.Size = BLOCK_SIZE
 	block.Position = finalPos
-	block.Anchored = true
 
 	-- FIX: Flat Platforms (No Tilt)
 	-- Construct CFrame looking at the target's X/Z but keeping current Y (level)
 	local lookAtPoint = Vector3.new(targetPos.X, finalPos.Y, targetPos.Z)
 	block.CFrame = CFrame.lookAt(finalPos, lookAtPoint)
-
-	block.Material = Enum.Material.Glass
-	block.BrickColor = BrickColor.new("Institutional white")
-	
-	-- Integration: Tags & Attributes
-	CollectionService:AddTag(block, "Crystal")
-	block:SetAttribute("IgnoreTouches", true)
 
 	block.Parent = Workspace
 
@@ -202,12 +193,8 @@ local function createStarterPads()
 
 	-- Helper to create a pad
 	local function makePad(sourcePart, targetPos, levelIndexForUnlock)
-		local pad = Instance.new("Part")
+		local pad = Templates.StarterPad:Clone()
 		pad.Name = "StarterPad_Level" .. (levelIndexForUnlock + 1)
-		pad.Size = Vector3.new(4, 1, 4)
-		pad.BrickColor = BrickColor.new("Gold")
-		pad.Material = Enum.Material.Neon
-		pad.Anchored = true
 
 		-- Position at edge facing target
 		local dir = (targetPos - sourcePart.Position).Unit
@@ -257,15 +244,13 @@ local function createLevels()
 
 		if existing then
 			platform = existing
+			-- Update props just in case
 			platform.Position = config.Position
 			platform.BrickColor = config.Color
 		else
-			platform = Instance.new("Part")
+			platform = Templates.LevelPlatform:Clone()
 			platform.Name = config.Name
-			platform.Size = Vector3.new(20, 2, 20)
 			platform.Position = config.Position
-			platform.Anchored = true
-			platform.Material = Enum.Material.Neon
 			platform.BrickColor = config.Color
 			platform.Parent = Workspace
 		end

@@ -25,6 +25,11 @@ local function createCounter(part, value)
 end
 
 local function setupCrystal(part: BasePart)
+    -- Check if the part is in Workspace. If not (e.g., in ServerStorage/Templates), do not apply logic yet.
+    if not part:IsDescendantOf(workspace) then
+        return
+    end
+
     part.Color = CrystalConfig.Colors.Default
     
     -- Variables locales para controlar esta plataforma específica
