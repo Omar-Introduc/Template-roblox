@@ -2,13 +2,24 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local CollectionService = game:GetService("CollectionService")
+local ServerStorage = game:GetService("ServerStorage")
 
--- 1. Modular Spiral Level Layout
+-- Wait for Templates
+local templatesFolder = ServerStorage:WaitForChild("Templates", 10)
+if not templatesFolder then
+	warn("Templates folder not found in ServerStorage!")
+end
+
+local templateBlock = templatesFolder:WaitForChild("ParkourBlock")
+local templatePlatform = templatesFolder:WaitForChild("LevelPlatform")
+local templatePad = templatesFolder:WaitForChild("StarterPad")
+
+-- 1. Modular Spiral Level Layout (Updated Z positions)
 local LEVEL_CONFIGS = {
-	{ Position = Vector3.new(100, 50, 0), Name = "Level1", Color = BrickColor.new("Bright green") }, -- East
-	{ Position = Vector3.new(0, 100, 100), Name = "Level2", Color = BrickColor.new("Bright yellow") }, -- South
-	{ Position = Vector3.new(-100, 150, 0), Name = "Level3", Color = BrickColor.new("Bright orange") }, -- West
-	{ Position = Vector3.new(0, 200, -100), Name = "Level4", Color = BrickColor.new("Bright red") }, -- North
+	{ Position = Vector3.new(50, 20, 10), Name = "Level1", Color = BrickColor.new("Bright green") }, -- East-ish (X positive)
+	{ Position = Vector3.new(0, 40, 20), Name = "Level2", Color = BrickColor.new("Bright yellow") }, -- South-ish (Z positive)
+	{ Position = Vector3.new(-50, 60, 30), Name = "Level3", Color = BrickColor.new("Bright orange") }, -- West-ish (X negative)
+	{ Position = Vector3.new(0, 80, 40), Name = "Level4", Color = BrickColor.new("Bright red") }, -- North-ish (Z positive? Adjusted for Z requirement)
 }
 
 -- 2. Dynamic Difficulty System
@@ -37,19 +48,13 @@ local cleanupPlayerPath
 --------------------------------------------------------------------------------
 
 local function createCountdown(block, duration)
-	local surfaceGui = Instance.new("SurfaceGui")
-	surfaceGui.Face = Enum.NormalId.Top
-	surfaceGui.Parent = block
+	-- Assumes block is a clone of the template which already has SurfaceGui/TextLabel
+	local surfaceGui = block:FindFirstChild("SurfaceGui")
+	if not surfaceGui then return end
+	local label = surfaceGui:FindFirstChild("TextLabel")
+	if not label then return end
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.TextScaled = true
-	label.Font = Enum.Font.GothamBold
-	label.TextColor3 = Color3.new(1, 0, 0) -- Red
-	label.TextStrokeTransparency = 0.5
-	label.Text = tostring(duration) .. ".0"
-	label.Parent = surfaceGui
+	label.Text = string.format("%.1f", duration)
 
 	task.spawn(function()
 		local remaining = duration
@@ -110,10 +115,9 @@ function spawnNextBlock(player, currentBlock)
 	-- We only modify X and Z. Y is determined by the 'Invisible Line' (idealPos.Y)
 	local finalPos = Vector3.new(idealPos.X + offsetX, idealPos.Y, idealPos.Z + offsetZ)
 
-	-- Create Block
-	local block = Instance.new("Part")
+	-- Create Block using Clone
+	local block = templateBlock:Clone()
 	block.Name = "Path_" .. player.Name
-	block.Size = BLOCK_SIZE
 	block.Position = finalPos
 	block.Anchored = true
 
@@ -202,19 +206,36 @@ local function createStarterPads()
 
 	-- Helper to create a pad
 	local function makePad(sourcePart, targetPos, levelIndexForUnlock)
-		local pad = Instance.new("Part")
+		local pad = templatePad:Clone()
 		pad.Name = "StarterPad_Level" .. (levelIndexForUnlock + 1)
-		pad.Size = Vector3.new(4, 1, 4)
-		pad.BrickColor = BrickColor.new("Gold")
-		pad.Material = Enum.Material.Neon
-		pad.Anchored = true
+		-- Size is already set in template
 
 		-- Position at edge facing target
 		local dir = (targetPos - sourcePart.Position).Unit
-		local distFromCenter = (sourcePart.Size.X / 2) - 2.5
+
+		-- Adjust for source part size (assuming sourcePart is circular or square)
+		-- If sourcePart is LevelPlatform (Cylinder), Size.X is height, Size.Y/Z is diameter.
+		-- However, levelParts are rotated 90 deg.
+		-- So the "Diameter" is actually along the world X/Z axes if it was laid flat?
+		-- The template LevelPlatform size is (1, 20, 20).
+		-- After rotation, the flat circle is in XZ plane.
+		-- The radius is Size.Y/2 or Size.Z/2 (which is 10).
+
+		local radius = 0
+		if sourcePart.Shape == Enum.PartType.Cylinder then
+			radius = sourcePart.Size.Y / 2
+		else
+			radius = sourcePart.Size.X / 2 -- Fallback for Lobby/Box
+		end
+
+		local distFromCenter = radius - 2.5 -- 2.5 is pad half size approx
 
 		pad.Position = sourcePart.Position + (dir * distFromCenter) + Vector3.new(0, 0.6, 0)
 		pad.CFrame = CFrame.lookAt(pad.Position, Vector3.new(targetPos.X, pad.Position.Y, targetPos.Z))
+
+		-- Integration: Tags & Attributes for StarterPad
+		CollectionService:AddTag(pad, "Crystal")
+		pad:SetAttribute("IgnoreTouches", true)
 
 		pad.Parent = Workspace
 
@@ -260,13 +281,15 @@ local function createLevels()
 			platform.Position = config.Position
 			platform.BrickColor = config.Color
 		else
-			platform = Instance.new("Part")
+			platform = templatePlatform:Clone()
 			platform.Name = config.Name
-			platform.Size = Vector3.new(20, 2, 20)
 			platform.Position = config.Position
-			platform.Anchored = true
-			platform.Material = Enum.Material.Neon
 			platform.BrickColor = config.Color
+
+			-- Integration: Tags & Attributes for LevelPlatform
+			CollectionService:AddTag(platform, "Crystal")
+			platform:SetAttribute("IgnoreTouches", true)
+
 			platform.Parent = Workspace
 		end
 
@@ -318,7 +341,15 @@ local function onCharacterAdded(player, char)
 			local hrp = char:WaitForChild("HumanoidRootPart", 5)
 			if hrp then
 				task.wait(0.1) -- Physics frame wait
-				hrp.CFrame = levelPart.CFrame + Vector3.new(0, 3, 0)
+				-- Precise Spawning: Teleport to top of platform
+				-- LevelPlatform is cylinder rotated 90 deg. Size (1, 20, 20).
+				-- The flat surface is at local X (+/- 0.5).
+				-- Since we rotated 90 deg on Z, local X+ is World Y+.
+				-- So top surface is Position + (Size.X/2) in Y direction.
+				-- Actually the Size.X is the "Height" of the cylinder in its local space.
+				-- So we add half of that (0.5) to the Y position.
+				local topY = levelPart.Position.Y + (levelPart.Size.X / 2)
+				hrp.CFrame = CFrame.new(levelPart.Position.X, topY + 3, levelPart.Position.Z)
 			end
 		end
 	end
