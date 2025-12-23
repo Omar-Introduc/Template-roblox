@@ -42,9 +42,19 @@ local function setupCrystal(part: BasePart)
             isDebounce = true
             
             -- Lógica del golpe
-            print("Debug: Cristal pisado! Restan: " .. (currentTouches - 1))
             part.Color = CrystalConfig.Colors.Touched -- Cambia a Magenta
             
+            -- Check for IgnoreTouches attribute
+            if part:GetAttribute("IgnoreTouches") == true then
+                 -- If ignored, just wait and reset color, NO destruction logic
+                 task.wait(CrystalConfig.DebounceTime)
+                 part.Color = CrystalConfig.Colors.Default -- Vuelve a Cyan
+                 isDebounce = false
+                 return
+            end
+
+            print("Debug: Cristal pisado! Restan: " .. (currentTouches - 1))
+
             currentTouches = currentTouches - 1
             counterLabel.Text = tostring(currentTouches) -- Actualizar el texto
             

@@ -5,7 +5,7 @@ local Debris = game:GetService("Debris")
 -- Configuration
 local TARGET_POS = Vector3.new(400, 150, 400) -- Dónde está la isla de lava
 local LOBBY_CENTER = Vector3.new(0, 0, 0)
-local BLOCK_SIZE = Vector3.new(4, 1, 4)
+local BLOCK_SIZE = Vector3.new(10, 1, 10)
 local CLEANUP_TIME = 10 -- Tiempo antes de que los bloques viejos desaparezcan solos
 
 -- Player Data: Stores current path and ALL blocks for cleanup
@@ -63,9 +63,10 @@ local function spawnNextBlock(player, currentBlock)
 	block.Size = BLOCK_SIZE
 	block.Position = newPos
 	block.Anchored = true
-	block.BrickColor = BrickColor.new("Dark stone grey")
-	block.Material = Enum.Material.Slate
-	block.TopSurface = Enum.SurfaceType.Smooth
+	-- Crystal Logic Integration
+	CollectionService:AddTag(block, "Crystal")
+	block:SetAttribute("IgnoreTouches", true)
+
 	block.Parent = Workspace
 	block.CFrame = CFrame.lookAt(newPos, newPos + horizontalDir)
 
@@ -74,8 +75,8 @@ local function spawnNextBlock(player, currentBlock)
 		table.insert(playerPaths[player].AllBlocks, block)
 	end
 	
-	-- Auto-destrucción por tiempo (opcional, para no laggear el server)
-	game:GetService("Debris"):AddItem(block, CLEANUP_TIME)
+	-- Auto-destrucción por tiempo
+	game:GetService("Debris"):AddItem(block, 5)
 
 	return block
 end
@@ -121,10 +122,15 @@ local function startPath(player)
 	block.Size = BLOCK_SIZE
 	block.Position = spawnPos
 	block.Anchored = true
-	block.BrickColor = BrickColor.new("Dark stone grey")
-	block.Material = Enum.Material.Slate
+	-- Crystal Logic Integration
+	CollectionService:AddTag(block, "Crystal")
+	block:SetAttribute("IgnoreTouches", true)
+
 	block.Parent = Workspace
 	block.CFrame = CFrame.lookAt(spawnPos, spawnPos + horizontalDir)
+
+	-- Auto-destrucción por tiempo
+	game:GetService("Debris"):AddItem(block, 5)
 
 	-- Inicializar datos del jugador
 	playerPaths[player] = { 
