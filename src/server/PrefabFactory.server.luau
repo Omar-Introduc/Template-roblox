@@ -73,10 +73,23 @@ end
 local function createParkourBlock(biome, folder)
 	local block = Instance.new("Part")
 	block.Name = "ParkourBlock"
-	block.Size = Vector3.new(10, 1, 10)
+	block.Size = Vector3.new(12, 0.5, 12) -- Flat and wider for better landing
 	block.Material = biome.Material
 	block.Color = biome.Color
+	block.Transparency = 0.2
 	block.Anchored = true
+	
+	-- Polish Movement: High Friction
+	block.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.3, 0.5) -- Friction, Elasticity, Weighting
+
+	-- Neon Border Effect
+	local selectionBox = Instance.new("SelectionBox")
+	selectionBox.Name = "NeonBorder"
+	selectionBox.Adornee = block
+	selectionBox.Color3 = biome.Color
+	selectionBox.LineThickness = 0.1
+	selectionBox.Transparency = 0.1
+	selectionBox.Parent = block
 
 	CollectionService:AddTag(block, "Crystal")
 	block:SetAttribute("IgnoreTouches", true)
@@ -93,8 +106,14 @@ local function createParkourBlock(biome, folder)
 	label.TextScaled = true
 	label.Font = Enum.Font.GothamBold
 	label.TextColor3 = Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0.5
 	label.Text = "0.0"
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 5 -- Thicker for better visibility
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.Parent = label
+
 	label.Parent = surfaceGui
 
 	addParticles(block, biome)

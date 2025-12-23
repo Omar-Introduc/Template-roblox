@@ -36,8 +36,11 @@ local function setupCrystal(part: BasePart)
     local currentTouches = CrystalConfig.MaxTouches
     local isDebounce = false -- Para evitar que cuente muchos toques en un solo segundo
     
-    -- Crear el contador visual
-    local counterLabel = createCounter(part, currentTouches)
+    -- Crear el contador visual (Solo si no se ignora)
+    local counterLabel
+    if not part:GetAttribute("IgnoreTouches") then
+        counterLabel = createCounter(part, currentTouches)
+    end
 
     part.Touched:Connect(function(hit)
         -- Verificar si fue un jugador y si no estamos en tiempo de espera
@@ -61,7 +64,9 @@ local function setupCrystal(part: BasePart)
             print("Debug: Cristal pisado! Restan: " .. (currentTouches - 1))
 
             currentTouches = currentTouches - 1
-            counterLabel.Text = tostring(currentTouches) -- Actualizar el texto
+            if counterLabel then
+                counterLabel.Text = tostring(currentTouches) -- Actualizar el texto
+            end
             
             if currentTouches <= 0 then
                 -- ¡SE ROMPE!

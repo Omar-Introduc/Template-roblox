@@ -19,10 +19,10 @@ local LEVEL_CONFIGS = {
 
 -- 2. Dynamic Difficulty System
 local DIFFICULTY_SETTINGS = {
-	[1] = { MinDist = 8, MaxDist = 12, Variance = 4, Time = 5 },   -- Easy
-	[2] = { MinDist = 10, MaxDist = 14, Variance = 6, Time = 4.5 }, -- Medium
-	[3] = { MinDist = 12, MaxDist = 16, Variance = 8, Time = 4 },   -- Hard
-	[4] = { MinDist = 14, MaxDist = 17, Variance = 10, Time = 3 },  -- Extreme
+	[1] = { MinDist = 8, MaxDist = 12, Variance = 2.8, Time = 5 },   -- Easy
+	[2] = { MinDist = 10, MaxDist = 14, Variance = 4.2, Time = 4.5 }, -- Medium
+	[3] = { MinDist = 12, MaxDist = 16, Variance = 5.6, Time = 4 },   -- Hard
+	[4] = { MinDist = 14, MaxDist = 17, Variance = 7.0, Time = 3 },  -- Extreme
 }
 
 -- State
@@ -64,18 +64,55 @@ local function createCountdown(block, duration)
 	if not label then return end
 
 	label.Text = string.format("%.1f", duration)
+	label.TextColor3 = Color3.new(1, 1, 1)
 
 	task.spawn(function()
 		local remaining = duration
 		while remaining > 0 do
 			if not block.Parent then break end
 			label.Text = string.format("%.1f", remaining)
+
+			-- Color Change Logic
+			if remaining <= 1 then
+				label.TextColor3 = Color3.fromRGB(255, 0, 0) -- Bright Red
+				-- Fast Blinking
+				label.Visible = not label.Visible
+			elseif remaining <= 2 then
+				label.TextColor3 = Color3.fromRGB(255, 255, 0) -- Yellow
+				label.Visible = true
+			else
+				label.TextColor3 = Color3.new(1, 1, 1) -- White
+				label.Visible = true
+			end
+
+			-- Pulse Effect (Grow/Shrink every 0.5s or on tick)
+			local pulseTween = TweenService:Create(label, TweenInfo.new(0.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+				Size = UDim2.fromScale(1.1, 1.1)
+			})
+			pulseTween:Play()
+			pulseTween.Completed:Connect(function()
+				if label and label.Parent then
+					TweenService:Create(label, TweenInfo.new(0.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+						Size = UDim2.fromScale(1, 1)
+					}):Play()
+				end
+			end)
+
 			task.wait(0.1)
 			remaining -= 0.1
 		end
 
 		if block and block.Parent then
-			block:Destroy()
+			-- Disintegration Animation
+			local disintegrateInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			local disintegrateTween = TweenService:Create(block, disintegrateInfo, {
+				Size = Vector3.new(0, 0, 0),
+				Transparency = 1
+			})
+			disintegrateTween:Play()
+			disintegrateTween.Completed:Connect(function()
+				block:Destroy()
+			end)
 		end
 	end)
 end
