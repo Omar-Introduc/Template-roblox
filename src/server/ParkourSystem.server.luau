@@ -71,17 +71,10 @@ end
 --------------------------------------------------------------------------------
 
 function spawnNextBlock(player, currentBlock)
-	-- Target Logic:
-	-- If playerProgress is 0 (Lobby), we want to go to Level 1 (Index 1).
-	-- If playerProgress is 1 (Level 1), we want to go to Level 2 (Index 2).
-	-- So targetIndex = (progress or 0) + 1.
-
 	local currentLevel = playerProgress[player] or 0
 	local targetIndex = currentLevel + 1
 
 	if targetIndex > #LEVEL_CONFIGS then
-		-- Reached end? Stop spawning or loop?
-		-- For safety, just target the last level or stop.
 		return nil
 	end
 
@@ -90,8 +83,6 @@ function spawnNextBlock(player, currentBlock)
 
 	local startPos = currentBlock.Position
 	local targetPos = targetConfig.Position
-
-	-- NEW ALGORITHM: 'Invisible Line' Projection
 
 	-- 1. Calculate the direct vector (The Invisible Line) to the target center
 	local vectorToTarget = (targetPos - startPos)
@@ -140,7 +131,7 @@ function spawnNextBlock(player, currentBlock)
 
 	block.Parent = Workspace
 
-	-- Visual Countdown instead of just Debris
+	-- Visual Countdown
 	createCountdown(block, diff.Time)
 
 	-- Tracking
@@ -160,6 +151,7 @@ function setupBlockEvents(player, block)
 		if hit.Parent == player.Character then
 			-- Verify this is the last block
 			local pathData = playerPaths[player]
+			-- Fix: Only spawn if this is indeed the last block in the chain
 			if pathData and pathData.LastBlock == block then
 				triggered = true
 				local nextBlock = spawnNextBlock(player, block)
@@ -211,7 +203,7 @@ local function createStarterPads()
 	-- Helper to create a pad
 	local function makePad(sourcePart, targetPos, levelIndexForUnlock)
 		local pad = Instance.new("Part")
-		pad.Name = "StarterPad_Level" .. (levelIndexForUnlock + 1) -- e.g. Pad Level 1 (at lobby)
+		pad.Name = "StarterPad_Level" .. (levelIndexForUnlock + 1)
 		pad.Size = Vector3.new(4, 1, 4)
 		pad.BrickColor = BrickColor.new("Gold")
 		pad.Material = Enum.Material.Neon
@@ -219,7 +211,6 @@ local function createStarterPads()
 
 		-- Position at edge facing target
 		local dir = (targetPos - sourcePart.Position).Unit
-		-- Approximate edge distance (Half size - padding)
 		local distFromCenter = (sourcePart.Size.X / 2) - 2.5
 
 		pad.Position = sourcePart.Position + (dir * distFromCenter) + Vector3.new(0, 0.6, 0)
@@ -234,8 +225,6 @@ local function createStarterPads()
 			if player then
 				local progress = playerProgress[player] or 0
 
-				-- Unlock logic: If at Lobby (0), pad requires progress >= 0. OK.
-				-- If at Level 1 (1), pad requires progress >= 1. OK.
 				if progress >= levelIndexForUnlock then
 					debounce = true
 					startPath(player, pad)
@@ -283,23 +272,24 @@ local function createLevels()
 
 		levelParts[i] = platform
 
-		-- Checkpoint Logic
+		-- Checkpoint Logic with Fix 1: Independent Level Generation
 		platform.Touched:Connect(function(hit)
 			local player = Players:GetPlayerFromCharacter(hit.Parent)
 			if player then
-				-- Just update progress, DO NOT auto-start path
+				-- Immediately stop current path generation
+				if playerPaths[player] then
+					playerPaths[player].LastBlock = nil
+				end
+
 				local currentProgress = playerProgress[player] or 0
 				if i > currentProgress then
 					playerProgress[player] = i
 					print(player.Name .. " UNLOCKED " .. config.Name)
-
-					-- Play a sound or effect?
 				end
 			end
 		end)
 	end
 	
-	-- Create pads after levels exist
 	createStarterPads()
 end
 
@@ -314,12 +304,24 @@ function cleanupPlayerPath(player)
 		end
 	end
 	playerPaths[player] = nil
-	-- Note: We do NOT reset playerProgress on cleanup, keeping progress across falls/deaths.
 end
 
 local function onCharacterAdded(player, char)
 	cleanupPlayerPath(player)
-	-- No loop here anymore.
+
+	-- Fix 2: Checkpoint Spawning Logic
+	-- If progress > 0, teleport to that level
+	local levelIndex = playerProgress[player] or 0
+	if levelIndex > 0 then
+		local levelPart = levelParts[levelIndex]
+		if levelPart then
+			local hrp = char:WaitForChild("HumanoidRootPart", 5)
+			if hrp then
+				task.wait(0.1) -- Physics frame wait
+				hrp.CFrame = levelPart.CFrame + Vector3.new(0, 3, 0)
+			end
+		end
+	end
 end
 
 Players.PlayerAdded:Connect(function(p)
@@ -331,5 +333,4 @@ Players.PlayerRemoving:Connect(function(p)
 	playerProgress[p] = nil
 end)
 
--- Initialize
 createLevels()
