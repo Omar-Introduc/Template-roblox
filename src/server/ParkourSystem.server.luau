@@ -3,21 +3,18 @@ local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local CollectionService = game:GetService("CollectionService")
 local ServerStorage = game:GetService("ServerStorage")
+local TweenService = game:GetService("TweenService")
 
 -- Wait for Factory
 local Templates = ServerStorage:WaitForChild("Templates")
 Templates:WaitForChild("FactoryReady")
 
--- 1. Modular Spiral Level Layout (Z = 10, 20, 30, 40)
+-- 1. Modular Spiral Level Layout (Revised Colors for consistency)
 local LEVEL_CONFIGS = {
-	-- Level 1: Z=10. Start (50, 30, 10)
-	{ Position = Vector3.new(50, 30, 10), Name = "Level1", Color = BrickColor.new("Bright green") },
-	-- Level 2: Z=20. (0, 60, 20)
-	{ Position = Vector3.new(0, 60, 20), Name = "Level2", Color = BrickColor.new("Bright yellow") },
-	-- Level 3: Z=30. (-50, 90, 30)
-	{ Position = Vector3.new(-50, 90, 30), Name = "Level3", Color = BrickColor.new("Bright orange") },
-	-- Level 4: Z=40. (0, 120, 40)
-	{ Position = Vector3.new(0, 120, 40), Name = "Level4", Color = BrickColor.new("Bright red") },
+	{ Position = Vector3.new(50, 30, 10), Name = "Level1" },
+	{ Position = Vector3.new(0, 60, 20), Name = "Level2" },
+	{ Position = Vector3.new(-50, 90, 30), Name = "Level3" },
+	{ Position = Vector3.new(0, 120, 40), Name = "Level4" },
 }
 
 -- 2. Dynamic Difficulty System
@@ -30,7 +27,7 @@ local DIFFICULTY_SETTINGS = {
 
 -- State
 local playerPaths = {} -- player -> { LastBlock = Part, AllBlocks = {Part, ...} }
-local playerProgress = {} -- player -> Highest Level Index Reached (0 = Lobby, 1 = Level1, etc.)
+local playerProgress = {} -- player -> Highest Level Index Reached
 local levelParts = {} -- levelIndex -> Part
 
 -- Forward declarations
@@ -40,24 +37,38 @@ local startPath
 local cleanupPlayerPath
 
 --------------------------------------------------------------------------------
--- VISUALS: Countdown Timer
+-- VISUALS: Animations & Countdown
 --------------------------------------------------------------------------------
 
+local function animateBlockAppearance(block)
+	local finalSize = block.Size
+	local finalTransparency = block.Transparency
+	
+	block.Size = Vector3.new(0, 0, 0)
+	block.Transparency = 1
+	
+	local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	local tween = TweenService:Create(block, tweenInfo, {
+		Size = finalSize,
+		Transparency = finalTransparency
+	})
+	
+	tween:Play()
+end
+
 local function createCountdown(block, duration)
-	-- Look for the SurfaceGui and Label created by Factory
 	local surfaceGui = block:WaitForChild("TimerGui", 5)
 	if not surfaceGui then return end
 
 	local label = surfaceGui:WaitForChild("TimerLabel", 5)
 	if not label then return end
 
-	label.Text = tostring(duration) .. ".0"
+	label.Text = string.format("%.1f", duration)
 
 	task.spawn(function()
 		local remaining = duration
 		while remaining > 0 do
 			if not block.Parent then break end
-			-- Decimal Countdown (5.0, 4.9, ...)
 			label.Text = string.format("%.1f", remaining)
 			task.wait(0.1)
 			remaining -= 0.1
@@ -83,49 +94,48 @@ function spawnNextBlock(player, currentBlock)
 
 	local targetConfig = LEVEL_CONFIGS[targetIndex]
 	local diff = DIFFICULTY_SETTINGS[targetIndex] or DIFFICULTY_SETTINGS[1]
+	
+	-- Get themed folder
+	local biomeFolder = Templates:FindFirstChild("Level" .. targetIndex) 
+		or Templates:FindFirstChild("Level1") -- Fallback
 
 	local startPos = currentBlock.Position
 	local targetPos = targetConfig.Position
 
-	-- 1. Calculate the direct vector (The Invisible Line) to the target center
+	-- 1. Calculate the direct vector (The Invisible Line)
 	local vectorToTarget = (targetPos - startPos)
 	local distToTarget = vectorToTarget.Magnitude
-
-	-- Direction unit vector
 	local moveDir = vectorToTarget.Unit
 
-	-- 2. Proportional Division: Move along this line by JumpDistance
+	-- 2. Proportional Division
 	local jumpDist = math.random(diff.MinDist * 10, diff.MaxDist * 10) / 10
 
-	-- Safety: Don't overshoot target if we are very close
 	if distToTarget < jumpDist + 5 then
-		jumpDist = distToTarget - 5 -- Land just before it
-		if jumpDist < 5 then jumpDist = 5 end -- Minimum jump
+		jumpDist = distToTarget - 5
+		if jumpDist < 5 then jumpDist = 5 end
 	end
 
 	local idealPos = startPos + (moveDir * jumpDist)
 
-	-- 3. Sub-plane Probability: Apply controlled random Offset (Variance) on X/Z axis
+	-- 3. Offset (Variance)
 	local varAmount = diff.Variance
 	local offsetX = (math.random() - 0.5) * 2 * varAmount
 	local offsetZ = (math.random() - 0.5) * 2 * varAmount
 
-	-- We only modify X and Z. Y is determined by the 'Invisible Line' (idealPos.Y)
 	local finalPos = Vector3.new(idealPos.X + offsetX, idealPos.Y, idealPos.Z + offsetZ)
 
-	-- Create Block from Prefab (CLONING LOGIC)
-	local block = Templates.ParkourBlock:Clone()
+	-- Create Block from Themed Prefab
+	local block = biomeFolder.ParkourBlock:Clone()
 	block.Name = "Path_" .. player.Name
 	block.Position = finalPos
 
-	-- FIX: Flat Rotation (No Tilt)
-	-- Construct CFrame looking at the target's X/Z but keeping current Y (level)
 	local lookAtPoint = Vector3.new(targetPos.X, finalPos.Y, targetPos.Z)
 	block.CFrame = CFrame.lookAt(finalPos, lookAtPoint)
 
 	block.Parent = Workspace
-
-	-- Visual Countdown
+	
+	-- Animations
+	animateBlockAppearance(block)
 	createCountdown(block, diff.Time)
 
 	-- Tracking
@@ -143,16 +153,13 @@ function setupBlockEvents(player, block)
 	block.Touched:Connect(function(hit)
 		if triggered then return end
 		if hit.Parent == player.Character then
-			-- Verify this is the last block
 			local pathData = playerPaths[player]
-			-- Fix: Only spawn if this is indeed the last block in the chain
 			if pathData and pathData.LastBlock == block then
 				triggered = true
 				local nextBlock = spawnNextBlock(player, block)
 				if nextBlock then
 					pathData.LastBlock = nextBlock
 				else
-					-- Reached destination or stop
 					pathData.LastBlock = nil
 				end
 			end
@@ -161,14 +168,13 @@ function setupBlockEvents(player, block)
 end
 
 function startPath(player, startPad)
-	cleanupPlayerPath(player) -- Ensure clean slate
+	cleanupPlayerPath(player)
 
 	playerPaths[player] = {
 		LastBlock = nil,
 		AllBlocks = {}
 	}
 
-	-- Spawn first block from the pad
 	local firstBlock = spawnNextBlock(player, startPad)
 
 	if firstBlock then
@@ -181,7 +187,6 @@ end
 --------------------------------------------------------------------------------
 
 local function createStarterPads()
-	-- Lobby -> Level 1 (Index 0 -> 1)
 	local lobbyPart = Workspace:FindFirstChild("Lobby")
 	if not lobbyPart then
 		lobbyPart = Instance.new("Part")
@@ -194,23 +199,19 @@ local function createStarterPads()
 		lobbyPart.Parent = Workspace
 	end
 
-	-- Helper to create a pad
-	local function makePad(sourcePart, targetPos, levelIndexForUnlock)
-		local pad = Templates.StarterPad:Clone()
-		pad.Name = "StarterPad_Level" .. (levelIndexForUnlock + 1)
-
-		-- Position at edge facing target
-		-- NOTE: LevelPlatform is a Cylinder rotated on X (length) to be flat.
-		-- sourcePart might be Cylinder or Block.
-		-- If Cylinder (LevelPlatform), Size.X is height(1), Size.Y/Z is diameter(20).
-		-- If Block (Lobby), Size is Box.
+	local function makePad(sourcePart, levelIndexForUnlock)
+		local targetLevelIndex = levelIndexForUnlock + 1
+		local biomeFolder = Templates:FindFirstChild("Level" .. targetLevelIndex) or Templates:FindFirstChild("Level1")
+		
+		local targetPos = LEVEL_CONFIGS[targetLevelIndex].Position
+		
+		local pad = biomeFolder.StarterPad:Clone()
+		pad.Name = "StarterPad_Level" .. targetLevelIndex
 
 		local distFromCenter = 0
-		if sourcePart.Name == "LevelPlatform" or sourcePart.Name:find("Level") then
-			-- Cylinder Logic: Radius = Size.Y / 2 (since Size is (1, 20, 20))
+		if sourcePart.Name:find("Level") then
 			distFromCenter = (sourcePart.Size.Y / 2) - 2.5
 		else
-			-- Block Logic
 			distFromCenter = (sourcePart.Size.X / 2) - 2.5
 		end
 
@@ -227,9 +228,6 @@ local function createStarterPads()
 			local player = Players:GetPlayerFromCharacter(hit.Parent)
 			if player then
 				local progress = playerProgress[player] or 0
-
-				-- Independent Pathing: Triggered only if player has unlocked this level
-				-- (Or maybe they can try if they are there? Logic says "unlocked")
 				if progress >= levelIndexForUnlock then
 					debounce = true
 					startPath(player, pad)
@@ -240,17 +238,14 @@ local function createStarterPads()
 		end)
 	end
 
-	-- 1. Lobby -> Level 1 (Index 0 unlock)
-	makePad(lobbyPart, LEVEL_CONFIGS[1].Position, 0)
+	-- 1. Lobby -> Level 1
+	makePad(lobbyPart, 0)
 	
-	-- 2. Level i -> Level i+1 (Index i unlock)
-	for i, config in ipairs(LEVEL_CONFIGS) do
-		if i < #LEVEL_CONFIGS then
-			local nextConfig = LEVEL_CONFIGS[i+1]
-			local sourcePart = levelParts[i]
-			if sourcePart then
-				makePad(sourcePart, nextConfig.Position, i)
-			end
+	-- 2. Level i -> Level i+1
+	for i = 1, #LEVEL_CONFIGS - 1 do
+		local sourcePart = levelParts[i]
+		if sourcePart then
+			makePad(sourcePart, i)
 		end
 	end
 end
@@ -263,30 +258,21 @@ local function createLevels()
 		if existing then
 			platform = existing
 			platform.Position = config.Position
-			platform.BrickColor = config.Color
 		else
-			platform = Templates.LevelPlatform:Clone()
+			local biomeFolder = Templates:FindFirstChild("Level" .. i)
+			platform = biomeFolder.LevelPlatform:Clone()
 			platform.Name = config.Name
-			-- Cloning preserves Rotation (Flat Cylinder)
-			-- We set Position, which preserves Rotation CFrame component
 			platform.Position = config.Position
-			platform.BrickColor = config.Color
 			platform.Parent = Workspace
 		end
 
 		levelParts[i] = platform
 
-		-- Checkpoint Logic with Independent Leveling
 		platform.Touched:Connect(function(hit)
 			local player = Players:GetPlayerFromCharacter(hit.Parent)
 			if player then
-				-- Independent Pathing: Clear path when reaching a platform
 				if playerPaths[player] then
-					-- Stop generating new blocks
 					playerPaths[player].LastBlock = nil
-					-- Optionally clear old blocks immediately?
-					-- Usually better to let them expire or clear explicitly.
-					-- We'll clear to be clean.
 					cleanupPlayerPath(player)
 				end
 
@@ -318,16 +304,13 @@ end
 local function onCharacterAdded(player, char)
 	cleanupPlayerPath(player)
 
-	-- Precise Spawning: Teleport to top of last LevelPlatform reached
 	local levelIndex = playerProgress[player] or 0
 	if levelIndex > 0 then
 		local levelPart = levelParts[levelIndex]
 		if levelPart then
 			local hrp = char:WaitForChild("HumanoidRootPart", 5)
 			if hrp then
-				task.wait(0.1) -- Physics frame wait
-				-- LevelPlatform is 1 unit thick (Size.X=1). Center is at Y. Top is Y + 0.5.
-				-- Teleport slightly higher (+3) to be safe.
+				task.wait(0.1)
 				hrp.CFrame = levelPart.CFrame + Vector3.new(0, 3, 0)
 			end
 		end
@@ -344,3 +327,4 @@ Players.PlayerRemoving:Connect(function(p)
 end)
 
 createLevels()
+

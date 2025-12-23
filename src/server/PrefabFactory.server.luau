@@ -13,20 +13,74 @@ else
 	templates.Parent = ServerStorage
 end
 
--- 2. Create ParkourBlock Prefab
-local function createParkourBlock()
+-- 2. Biome Configuration
+local BIOME_CONFIG = {
+	[1] = {
+		Name = "Level1",
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(0, 255, 100), -- Neon Green
+		ParticleType = "Leaves", -- Virtual representation
+		ParticleColor = ColorSequence.new(Color3.fromRGB(50, 200, 50))
+	},
+	[2] = {
+		Name = "Level2",
+		Material = Enum.Material.Glass,
+		Color = Color3.fromRGB(0, 150, 255), -- Electric Blue
+		ParticleType = "Bubbles",
+		ParticleColor = ColorSequence.new(Color3.fromRGB(150, 220, 255))
+	},
+	[3] = {
+		Name = "Level3",
+		Material = Enum.Material.CrackedLava,
+		Color = Color3.fromRGB(255, 80, 0), -- Lava Orange
+		ParticleType = "Fire",
+		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 100, 0), Color3.fromRGB(255, 200, 0))
+	},
+	[4] = {
+		Name = "Level4",
+		Material = Enum.Material.ForceField,
+		Color = Color3.fromRGB(180, 0, 255), -- Galaxy Purple
+		ParticleType = "Stars",
+		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(180, 0, 255))
+	}
+}
+
+-- 3. Utility to add particles
+local function addParticles(parent, biome)
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "BiomeEffect"
+	emitter.Color = biome.ParticleColor
+	emitter.Size = NumberSequence.new(0.5, 0)
+	emitter.Lifetime = NumberRange.new(1, 2)
+	emitter.Rate = 20
+	emitter.Speed = NumberRange.new(2, 5)
+	emitter.Acceleration = Vector3.new(0, 2, 0)
+	
+	if biome.ParticleType == "Leaves" then
+		emitter.Texture = "rbxassetid://6736340536" -- Leaf texture placeholder
+	elseif biome.ParticleType == "Bubbles" then
+		emitter.Texture = "rbxassetid://243004475" -- Bubble texture
+	elseif biome.ParticleType == "Fire" then
+		emitter.Texture = "rbxassetid://242291244" -- Fire texture
+	elseif biome.ParticleType == "Stars" then
+		emitter.Texture = "rbxassetid://585426142" -- Star texture
+	end
+	
+	emitter.Parent = parent
+end
+
+-- 4. Factory functions
+local function createParkourBlock(biome, folder)
 	local block = Instance.new("Part")
 	block.Name = "ParkourBlock"
 	block.Size = Vector3.new(10, 1, 10)
-	block.Material = Enum.Material.Neon
-	block.BrickColor = BrickColor.new("Institutional white")
+	block.Material = biome.Material
+	block.Color = biome.Color
 	block.Anchored = true
 
-	-- Tags and Attributes for CrystalService
 	CollectionService:AddTag(block, "Crystal")
 	block:SetAttribute("IgnoreTouches", true)
 
-	-- SurfaceGui for Countdown
 	local surfaceGui = Instance.new("SurfaceGui")
 	surfaceGui.Name = "TimerGui"
 	surfaceGui.Face = Enum.NormalId.Top
@@ -38,55 +92,54 @@ local function createParkourBlock()
 	label.BackgroundTransparency = 1
 	label.TextScaled = true
 	label.Font = Enum.Font.GothamBold
-	label.TextColor3 = Color3.new(1, 0, 0) -- Red
+	label.TextColor3 = Color3.new(1, 1, 1)
 	label.TextStrokeTransparency = 0.5
 	label.Text = "0.0"
 	label.Parent = surfaceGui
 
-	block.Parent = templates
+	addParticles(block, biome)
+	block.Parent = folder
 end
 
--- 3. Create LevelPlatform Prefab
-local function createLevelPlatform()
+local function createLevelPlatform(biome, folder)
 	local platform = Instance.new("Part")
 	platform.Name = "LevelPlatform"
-
-	-- Circular Shape (Cylinder)
-	-- For a Cylinder Part, X is the length (height of cylinder), Y/Z are the diameter.
-	-- We want a platform of diameter 20 and height 1.
-	-- So Size = (1, 20, 20).
 	platform.Shape = Enum.PartType.Cylinder
 	platform.Size = Vector3.new(1, 20, 20)
-
-	-- Rotate 90 degrees on Z to make the flat circular face face up (Y-axis)
-	-- Cylinder default: Circle faces are on +X/-X.
-	-- Rotating 90 deg around Z moves +X to +Y.
 	platform.CFrame = CFrame.Angles(0, 0, math.rad(90))
-
-	platform.Material = Enum.Material.Neon
+	platform.Material = biome.Material
+	platform.Color = biome.Color
 	platform.Anchored = true
-	platform.BrickColor = BrickColor.new("Medium stone grey") -- Will be colored by System
 
-	platform.Parent = templates
+	addParticles(platform, biome)
+	platform.Parent = folder
 end
 
--- 4. Create StarterPad Prefab
-local function createStarterPad()
+local function createStarterPad(biome, folder)
 	local pad = Instance.new("Part")
 	pad.Name = "StarterPad"
 	pad.Size = Vector3.new(4, 1, 4)
-	pad.BrickColor = BrickColor.new("Gold")
-	pad.Material = Enum.Material.Neon
+	pad.Material = biome.Material
+	pad.Color = biome.Color
 	pad.Anchored = true
 
-	pad.Parent = templates
+	pad.Parent = folder
 end
 
-createParkourBlock()
-createLevelPlatform()
-createStarterPad()
+-- 5. Main Generation Loop
+for i = 1, 4 do
+	local biome = BIOME_CONFIG[i]
+	local levelFolder = Instance.new("Folder")
+	levelFolder.Name = biome.Name
+	levelFolder.Parent = templates
 
--- 5. Signal Ready
+	createParkourBlock(biome, levelFolder)
+	createLevelPlatform(biome, levelFolder)
+	createStarterPad(biome, levelFolder)
+end
+
+-- 6. Signal Ready
 local readyVal = Instance.new("StringValue")
 readyVal.Name = "FactoryReady"
 readyVal.Parent = templates
+
