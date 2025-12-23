@@ -67,21 +67,28 @@ local function createMasterBlock()
 	stroke.Parent = label
 
 	label.Parent = surfaceGui
+
+	-- SFX: Jump Sound
+	local jumpSound = Instance.new("Sound")
+	jumpSound.Name = "JumpSound"
+	jumpSound.SoundId = "rbxassetid://4607031412" -- Pop SFX
+	jumpSound.Volume = 0.5
+	jumpSound.Parent = block
+
 	block.Parent = templates
 end
 
 local function createMasterPlatform()
 	local platform = Instance.new("Part")
 	platform.Name = "MasterPlatform"
-	platform.Shape = Enum.PartType.Cylinder
-	platform.Size = Vector3.new(1, 20, 20)
-	platform.CFrame = CFrame.Angles(0, 0, math.rad(90))
+	platform.Shape = Enum.PartType.Block
+	platform.Size = Vector3.new(25, 2, 25)
 	platform.Anchored = true
 	
 	-- Visibility Glow
 	local light = Instance.new("PointLight")
-	light.Range = 30
-	light.Brightness = 2
+	light.Range = 35
+	light.Brightness = 3
 	light.Parent = platform
 
 	platform.Parent = templates
@@ -90,8 +97,21 @@ end
 local function createMasterPad()
 	local pad = Instance.new("Part")
 	pad.Name = "MasterPad"
-	pad.Size = Vector3.new(10, 1, 10)
+	pad.Size = Vector3.new(12, 1, 12)
 	pad.Anchored = true
+	
+	-- Particles for visibility
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "PadBeacon"
+	particles.Texture = "rbxassetid://244221440" -- Flare/Star
+	particles.Size = NumberSequence.new(0.5, 0)
+	particles.Lifetime = NumberRange.new(1, 2)
+	particles.Rate = 10
+	particles.Speed = NumberRange.new(2, 5)
+	particles.EmissionDirection = Enum.NormalId.Top
+	particles.Color = ColorSequence.new(Color3.new(1, 1, 0))
+	particles.Parent = pad
+
 	pad.Parent = templates
 end
 
@@ -109,9 +129,17 @@ local function createMasterGem()
 	CollectionService:AddTag(gem, "CollectionItem")
 
 	local light = Instance.new("PointLight")
+	light.Name = "GemLight"
 	light.Range = 10
 	light.Brightness = 3
 	light.Parent = gem
+
+	-- SFX: Gem Sound
+	local gemSound = Instance.new("Sound")
+	gemSound.Name = "GemSound"
+	gemSound.SoundId = "rbxassetid://1510219102" -- Coin Collect
+	gemSound.Volume = 0.6
+	gemSound.Parent = gem
 
 	gem.Parent = templates
 end

@@ -47,7 +47,7 @@ local function createLobbyIsland()
 	local spawnLocation = Instance.new("SpawnLocation")
 	spawnLocation.Name = "LobbySpawn"
 	spawnLocation.Size = Vector3.new(10, 0.5, 10)
-	spawnLocation.Position = Vector3.new(0, 1.25, 0) -- Sitting on top of Lobby (Y=1)
+	spawnLocation.Position = Vector3.new(0, 1.3, 0) -- Elevated (1.3 - 0.25 = 1.05) to avoid Z-fighting with Lobby top (1.0)
 	spawnLocation.Anchored = true
 	spawnLocation.BrickColor = BrickColor.new("Gold")
 	spawnLocation.Material = Enum.Material.Neon
@@ -88,6 +88,15 @@ local function createDeadlyOcean()
 		
 		if humanoid and humanoid.Health > 0 then
 			print("🌊 Jugador cayó al agua: " .. character.Name)
+			
+			-- Splash Sound
+			local splash = Instance.new("Sound", hit)
+			splash.SoundId = "rbxassetid://6831034444" -- Water Splash
+			splash.Volume = 0.8
+			splash.PlayOnRemove = true
+			splash:Play()
+			splash:Destroy()
+
 			humanoid.Health = 0 -- Muerte instantánea
 		end
 	end)

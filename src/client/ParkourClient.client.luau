@@ -1,5 +1,33 @@
 local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+-- 5. Final Polish: Death Effects
+local function setupDeathJuice(character)
+	local humanoid = character:WaitForChild("Humanoid")
+	local playerGui = player:WaitForChild("PlayerGui")
+	
+	humanoid.Died:Connect(function()
+		local flash = Instance.new("Frame")
+		flash.Size = UDim2.fromScale(1, 1)
+		flash.BackgroundColor3 = Color3.new(0.8, 0, 0)
+		flash.BackgroundTransparency = 0.5
+		flash.BorderSizePixel = 0
+		flash.ZIndex = 10 -- Ensure it's on top
+		
+		local screenGui = playerGui:FindFirstChild("ScreenGui") or Instance.new("ScreenGui", playerGui)
+		flash.Parent = screenGui
+		
+		TweenService:Create(flash, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
+		game.Debris:AddItem(flash, 0.6)
+	end)
+end
+
+player.CharacterAdded:Connect(setupDeathJuice)
+if player.Character then task.spawn(setupDeathJuice, player.Character) end
+
+print("✨ Parkour Client: Optimized & Ready.")
 
 local function setupBlockVFX(block)
 	local surfaceGui = block:WaitForChild("TimerGui", 10)
@@ -58,6 +86,16 @@ local function setupBlockVFX(block)
 			end
 
 			task.wait(0.05)
+		end
+	end)
+
+	-- 3. Pulse Effect on Touch
+	block:GetAttributeChangedSignal("Stepped"):Connect(function()
+		if block:GetAttribute("Stepped") then
+			local originalSize = label.Size
+			label:TweenSize(UDim2.fromScale(1.4, 1.4), "Out", "Back", 0.1, true)
+			task.wait(0.1)
+			label:TweenSize(originalSize, "In", "Quad", 0.1, true)
 		end
 	end)
 end

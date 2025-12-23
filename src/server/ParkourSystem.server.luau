@@ -21,10 +21,10 @@ print("🏃 ParkourSystem: Factory is ready. Starting level generation...")
 
 -- 1. Configuration: Path & Levels (Optimized Spiral)
 local LEVEL_CONFIGS = {
-	{ Position = Vector3.new(120, 30, 0), Name = "Level1" },   -- Lowered from 35 to 30 for better lobby jump
-	{ Position = Vector3.new(0, 65, 120), Name = "Level2" },    -- Adjusted (+35 from Level 1)
-	{ Position = Vector3.new(-120, 100, 0), Name = "Level3" },
-	{ Position = Vector3.new(0, 135, -120), Name = "Level4" },
+	{ Position = Vector3.new(150, 35, 0), Name = "Level1" },
+	{ Position = Vector3.new(0, 70, 150), Name = "Level2" },
+	{ Position = Vector3.new(-150, 105, 0), Name = "Level3" },
+	{ Position = Vector3.new(0, 140, -150), Name = "Level4" },
 }
 
 local BIOME_CONFIG = {
@@ -58,7 +58,7 @@ local BIOME_CONFIG = {
 	}
 }
 
-local _LOBBY_RADIUS = 45 
+local LOBBY_RADIUS = 45 
 
 -- 2. Dynamic Difficulty System
 local DIFFICULTY_SETTINGS = {
@@ -241,9 +241,16 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 	
 	local finalPos = lastPos + (rotatedDir * jumpDist) + Vector3.new(0, heightStep, 0)
 	
-	-- 5. Safety: Boundary Check (Don't spawn inside target)
+	-- 5. Safety: Boundary Check (Don't spawn inside target or lobby)
 	if (finalPos - targetPos).Magnitude < 10 then
 		finalPos = lastPos + (dirToTarget * (distToTarget - 12)) -- Back off to ensure a gap
+	end
+	
+	-- Keep blocks outside the central lobby area (80x80, radius 40 + 5 buffer)
+	if (finalPos * Vector3.new(1, 0, 1)).Magnitude < LOBBY_RADIUS then
+		local pushDir = (finalPos * Vector3.new(1, 0, 1)).Unit
+		local horizontalOffset = pushDir * LOBBY_RADIUS
+		finalPos = Vector3.new(horizontalOffset.X, finalPos.Y, horizontalOffset.Z)
 	end
 	
 	-- Clone Master Prefab
@@ -281,6 +288,38 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 					local gVal = ls:FindFirstChild("Gems")
 					if gVal then gVal.Value += 1 end
 				end
+				
+				-- Feedback Musical y Visual
+				local sound = gem:FindFirstChild("GemSound")
+				if sound then sound:Play() end
+				
+				-- Popup de texto
+				local part = Instance.new("Part")
+				part.Size = Vector3.new(1, 1, 1)
+				part.Position = gem.Position
+				part.Anchored = true
+				part.CanCollide = false
+				part.Transparency = 1
+				part.Parent = Workspace
+				
+				local billGui = Instance.new("BillboardGui")
+				billGui.Size = UDim2.fromScale(4, 1.5)
+				billGui.Adornee = part
+				billGui.AlwaysOnTop = true
+				billGui.Parent = part
+				
+				local label = Instance.new("TextLabel")
+				label.Size = UDim2.fromScale(1, 1)
+				label.BackgroundTransparency = 1
+				label.Text = "+1 Gems!"
+				label.TextColor3 = Color3.new(1, 0.8, 0)
+				label.Font = Enum.Font.GothamBold
+				label.TextScaled = true
+				label.Parent = billGui
+				
+				TweenService:Create(part, TweenInfo.new(1), {Position = part.Position + Vector3.new(0, 4, 0)}):Play()
+				game:GetService("Debris"):AddItem(part, 1)
+
 				local currentTime = block:GetAttribute("RemainingTime") or 0
 				block:SetAttribute("RemainingTime", currentTime + 0.5)
 				TweenService:Create(gem, TweenInfo.new(0.2), {Size = Vector3.new(0,0,0), Transparency = 1}):Play()
@@ -306,10 +345,23 @@ setupBlockEvents = function(player, block)
 	local triggered = false
 	block.Touched:Connect(function(hit)
 		if triggered then return end
-		if hit.Parent == player.Character then
+		local player = Players:GetPlayerFromCharacter(hit.Parent)
+		if player then
 			local pathData = playerPaths[player]
 			if pathData and pathData.LastBlock == block then
 				triggered = true
+				
+				-- JUICE: Sound & Step-down animation
+				local sound = block:FindFirstChild("JumpSound")
+				if sound then sound:Play() end
+				
+				local originalPos = block.Position
+				local stepInfo = TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+				TweenService:Create(block, stepInfo, {Position = originalPos - Vector3.new(0, 0.3, 0)}):Play()
+				
+				-- Set an attribute to let the client know it was stepped on (for UI pulse)
+				block:SetAttribute("Stepped", true)
+
 				local currentLevel = playerProgress[player] or 0
 				local nextBlock = spawnNextBlock(player, currentLevel + 1)
 				if nextBlock then
@@ -369,23 +421,13 @@ local function createStarterPads()
 		
 		applyBiome(pad, biome)
 
-		local distFromCenter = 0
-		local heightOffset = 0.6
+		local distFromCenter = (sourcePart.Size.X / 2) - 4
+		local surfaceY = sourcePart.Position.Y + (sourcePart.Size.Y / 2) + 0.6 -- Elevated to avoid Z-fighting
 		
-		if sourcePart.Name:find("Level") then
-			-- It's a Cylinder (MasterPlatform)
-			-- Horizontal dist from center axis
-			distFromCenter = (sourcePart.Size.Z / 2) - 2.5
-			-- Vertical offset to sit ON TOP of the cylinder radius (Size.Z / 2)
-			heightOffset = (sourcePart.Size.Z / 2) + 0.5
-		else
-			-- It's the Lobby (Box)
-			distFromCenter = (sourcePart.Size.X / 2) - 3.5
-			heightOffset = (sourcePart.Size.Y / 2) + 0.1
-		end
-
 		local dir = (targetPos - sourcePart.Position).Unit
-		pad.Position = sourcePart.Position + (dir * (distFromCenter + 2)) + Vector3.new(0, heightOffset, 0)
+		pad.Position = sourcePart.Position + (dir * distFromCenter)
+		pad.Position = Vector3.new(pad.Position.X, surfaceY, pad.Position.Z)
+		
 		pad.CFrame = CFrame.lookAt(pad.Position, Vector3.new(targetPos.X, pad.Position.Y, targetPos.Z))
 		pad.Parent = Workspace
 
@@ -397,6 +439,27 @@ local function createStarterPads()
 				local progress = playerProgress[player] or 0
 				if progress >= levelIndexForUnlock then
 					debounce = true
+					
+					-- Checkpoint logic: Spawn player on this platform from now on
+					local checkpoint = sourcePart:FindFirstChild("CheckpointSpawn")
+					if not checkpoint then
+						checkpoint = Instance.new("SpawnLocation")
+						checkpoint.Name = "CheckpointSpawn"
+						checkpoint.Size = Vector3.new(1, 1, 1)
+						checkpoint.Position = sourcePart.Position + Vector3.new(0, 15, 0) -- High up, invisible
+						checkpoint.Transparency = 1
+						checkpoint.CanCollide = false
+						checkpoint.CanTouch = false
+						checkpoint.Enabled = true
+						checkpoint.Duration = 0
+						
+						local decal = checkpoint:FindFirstChildOfClass("Decal")
+						if decal then decal:Destroy() end
+						
+						checkpoint.Parent = sourcePart
+					end
+					player.RespawnLocation = checkpoint
+					
 					startPath(player, pad)
 					task.wait(1)
 					debounce = false
@@ -441,10 +504,7 @@ local function createLevels()
 			if player then
 				levelDebounce = true
 				
-				-- Only cleanup path if this is a NEW level for the player
-				-- or if they were in the middle of a path to THIS level.
 				local currentProgress = playerProgress[player] or 0
-				
 				if i > currentProgress then
 					if playerPaths[player] then
 						playerPaths[player].LastBlock = nil
@@ -461,10 +521,11 @@ local function createLevels()
 						if stageVal then stageVal.Value = i end
 					end
 					
+					player:SetAttribute("Stage", i) -- For Telemetry
+					
 					-- Apply immediate rewards
 					applyRewards(player, i)
 					
-					-- Screen Notification
 					-- Screen Notification
 					task.spawn(function()
 						local playerGui = player:FindFirstChild("PlayerGui")
@@ -479,6 +540,13 @@ local function createLevels()
 							msgLabel.TextScaled = true
 							msgLabel.Parent = playerGui
 							
+							-- Celebration Sound
+							local revealSound = Instance.new("Sound", Workspace)
+							revealSound.SoundId = "rbxassetid://12222253" -- Victory.wav
+							revealSound.PlayOnRemove = true
+							revealSound:Play()
+							revealSound:Destroy()
+
 							task.wait(2)
 							TweenService:Create(msgLabel, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
 							task.wait(0.5)
@@ -533,17 +601,6 @@ local function onCharacterAdded(player, char)
 	
 	-- Apply rewards based on progress
 	applyRewards(player, levelIndex)
-
-	if levelIndex > 0 then
-		local levelPart = levelParts[levelIndex]
-		if levelPart then
-			local hrp = char:WaitForChild("HumanoidRootPart", 5)
-			if hrp then
-				task.wait(0.1)
-				hrp.CFrame = levelPart.CFrame + Vector3.new(0, 3, 0)
-			end
-		end
-	end
 end
 
 Players.PlayerAdded:Connect(function(p)
