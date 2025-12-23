@@ -3,7 +3,7 @@ local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 
 -- Configuración
-local LOBBY_SIZE = 24
+local LOBBY_SIZE = 80
 local WALL_HEIGHT = 3
 
 -- Función para crear una pared
@@ -23,9 +23,9 @@ end
 local function createLobbyIsland()
 	-- 1. Crear el suelo de la isla
 	local lobbyIsland = Instance.new("Part")
-	lobbyIsland.Name = "LobbyIsland"
-	lobbyIsland.Size = Vector3.new(LOBBY_SIZE, 1, LOBBY_SIZE)
-	lobbyIsland.Position = Vector3.new(0, 0, 0)
+	lobbyIsland.Name = "Lobby" -- Matched with ParkourSystem search name
+	lobbyIsland.Size = Vector3.new(LOBBY_SIZE, 2, LOBBY_SIZE)
+	lobbyIsland.Position = Vector3.new(0, -0.5, 0) -- Centered thickness 2 studs (from -1.5 to 0.5)
 	lobbyIsland.Anchored = true
 	lobbyIsland.BrickColor = BrickColor.new("Bright green")
 	lobbyIsland.Material = Enum.Material.Grass
@@ -46,8 +46,8 @@ local function createLobbyIsland()
 	-- 3. SpawnLocation (Invisible pero funcional)
 	local spawnLocation = Instance.new("SpawnLocation")
 	spawnLocation.Name = "LobbySpawn"
-	spawnLocation.Size = Vector3.new(8, 1, 8)
-	spawnLocation.Position = Vector3.new(0, 1, 0)
+	spawnLocation.Size = Vector3.new(10, 1, 10)
+	spawnLocation.Position = Vector3.new(0, 2, 0) -- Elevated for safety
 	spawnLocation.Anchored = true
 	spawnLocation.Transparency = 1 -- Invisible
 	spawnLocation.CanCollide = false

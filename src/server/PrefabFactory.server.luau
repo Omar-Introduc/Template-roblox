@@ -19,29 +19,33 @@ local BIOME_CONFIG = {
 		Name = "Level1",
 		Material = Enum.Material.Neon,
 		Color = Color3.fromRGB(0, 255, 100), -- Neon Green
-		ParticleType = "Leaves", -- Virtual representation
-		ParticleColor = ColorSequence.new(Color3.fromRGB(50, 200, 50))
+		ParticleType = "Leaves",
+		ParticleColor = ColorSequence.new(Color3.fromRGB(50, 200, 50)),
+		AtmosphereColor = Color3.fromRGB(150, 255, 180) -- Light Green tint
 	},
 	[2] = {
 		Name = "Level2",
 		Material = Enum.Material.Glass,
 		Color = Color3.fromRGB(0, 150, 255), -- Electric Blue
 		ParticleType = "Bubbles",
-		ParticleColor = ColorSequence.new(Color3.fromRGB(150, 220, 255))
+		ParticleColor = ColorSequence.new(Color3.fromRGB(150, 220, 255)),
+		AtmosphereColor = Color3.fromRGB(130, 180, 255) -- Soft Blue tint
 	},
 	[3] = {
 		Name = "Level3",
 		Material = Enum.Material.CrackedLava,
 		Color = Color3.fromRGB(255, 80, 0), -- Lava Orange
 		ParticleType = "Fire",
-		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 100, 0), Color3.fromRGB(255, 200, 0))
+		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 100, 0), Color3.fromRGB(255, 200, 0)),
+		AtmosphereColor = Color3.fromRGB(255, 100, 50) -- Hot Red/Orange tint
 	},
 	[4] = {
 		Name = "Level4",
 		Material = Enum.Material.ForceField,
 		Color = Color3.fromRGB(180, 0, 255), -- Galaxy Purple
 		ParticleType = "Stars",
-		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(180, 0, 255))
+		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(180, 0, 255)),
+		AtmosphereColor = Color3.fromRGB(150, 50, 255) -- Deep Purple tint
 	}
 }
 
@@ -108,8 +112,18 @@ local function createParkourBlock(biome, folder)
 	label.TextColor3 = Color3.new(1, 1, 1)
 	label.Text = "0.0"
 
+	-- Pulsing Highlight Effect
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "BlockHighlight"
+	highlight.Adornee = block
+	highlight.FillColor = biome.Color
+	highlight.FillTransparency = 0.8
+	highlight.OutlineColor = Color3.new(1, 1, 1)
+	highlight.OutlineTransparency = 0.5
+	highlight.Parent = block
+
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 5 -- Thicker for better visibility
+	stroke.Thickness = 6 -- Bold outline for maximum visibility
 	stroke.Color = Color3.new(0, 0, 0)
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	stroke.Parent = label
@@ -137,12 +151,36 @@ end
 local function createStarterPad(biome, folder)
 	local pad = Instance.new("Part")
 	pad.Name = "StarterPad"
-	pad.Size = Vector3.new(4, 1, 4)
+	pad.Size = Vector3.new(10, 1, 10) -- Large launchpad
 	pad.Material = biome.Material
 	pad.Color = biome.Color
 	pad.Anchored = true
 
 	pad.Parent = folder
+end
+
+local function createGem(biome, folder)
+	local gem = Instance.new("Part")
+	gem.Name = "Gem"
+	gem.Size = Vector3.new(1.5, 2.5, 1.5)
+	gem.Shape = Enum.PartType.Ball -- Or use a MeshPart if available, here we'll use a stylized part
+	gem.Material = Enum.Material.Neon
+	gem.Color = Color3.fromRGB(255, 255, 255) -- White/Glow
+	gem.Transparency = 0.3
+	gem.Anchored = true
+	gem.CanCollide = false
+
+	-- Tag for collection system
+	CollectionService:AddTag(gem, "CollectionItem")
+
+	-- PointLight for glow
+	local light = Instance.new("PointLight")
+	light.Color = biome.Color
+	light.Range = 10
+	light.Brightness = 3
+	light.Parent = gem
+
+	gem.Parent = folder
 end
 
 -- 5. Main Generation Loop
@@ -155,6 +193,7 @@ for i = 1, 4 do
 	createParkourBlock(biome, levelFolder)
 	createLevelPlatform(biome, levelFolder)
 	createStarterPad(biome, levelFolder)
+	createGem(biome, levelFolder)
 end
 
 -- 6. Signal Ready
