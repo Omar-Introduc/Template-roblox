@@ -146,30 +146,52 @@ local function refreshLeaderboard()
 		local topTen = pages:GetCurrentPage()
 		updateDisplay(topTen)
 	else
-		warn("❌ [LEADERBOARD] Error fetching global data: " .. tostring(pages))
+		local err = tostring(pages)
+		if err:find("Studio") then
+			warn("⚠️ [LEADERBOARD] API access disabled in Studio. Using mock data.")
+			-- Mock Data for Studio
+			local mockData = {
+				{key = 1, value = 50},
+				{key = 2, value = 40},
+				{key = 3, value = 30}
+			}
+			updateDisplay(mockData)
+		else
+			warn("❌ [LEADERBOARD] Error fetching global data: " .. err)
+		end
 	end
 end
 
 local function savePlayerScore(player)
 	local stage = player:GetAttribute("Stage") or 0
 	if stage > 0 then
-		pcall(function()
+		local success, err = pcall(function()
 			MaxStageStore:SetAsync(tostring(player.UserId), stage)
 		end)
+		if not success and tostring(err):find("Studio") then
+			-- Silent fail in Studio
+		elseif not success then
+			warn("❌ Failed to save score for " .. player.Name .. ": " .. tostring(err))
+		end
 	end
 end
 
 -- Listeners
 Players.PlayerRemoving:Connect(savePlayerScore)
 
--- Main Loop
+-- Auto-Save Loop (Optimized: Every 5 minutes)
 task.spawn(function()
 	while true do
-		-- Periodic save for active players
+		task.wait(300) -- 5 Minutes
 		for _, player in ipairs(Players:GetPlayers()) do
 			savePlayerScore(player)
 		end
-		
+	end
+end)
+
+-- Main Loop (Refresh Leaderboard)
+task.spawn(function()
+	while true do
 		refreshLeaderboard()
 		task.wait(REFRESH_RATE)
 	end

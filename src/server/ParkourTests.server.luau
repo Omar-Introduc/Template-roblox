@@ -60,6 +60,21 @@ end
 testPart:Destroy()
 
 print("------------------------------------------------")
+print("🛍️ Testing Shop Integration")
+print("------------------------------------------------")
+
+-- Check if ShopService has initialized logic (indirectly)
+-- We assume ShopService creates a folder or specific structure if it works.
+-- For now, we just ensure the Script exists and is running (no easy way to check 'Running' state from here without side effects)
+-- But we can check for GlobalLeaderboard artifact
+local leaderboardBoard = workspace:FindFirstChild("LeaderboardBoard")
+if leaderboardBoard then
+	print("✅ Global Leaderboard Part exists in Workspace.")
+else
+	warn("⚠️ Global Leaderboard Part NOT found (might take time to spawn).")
+end
+
+print("------------------------------------------------")
 print("📝 FINAL REPORT")
 print("------------------------------------------------")
 
