@@ -1,16 +1,19 @@
-local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local TEMPLATES_FOLDER_NAME = "Templates"
 
 -- 1. Check and Clean/Create Folder
-local templates = ServerStorage:FindFirstChild(TEMPLATES_FOLDER_NAME)
+print("🏭 PrefabFactory: Starting initialization...")
+local templates = ReplicatedStorage:FindFirstChild(TEMPLATES_FOLDER_NAME)
 if templates then
 	templates:ClearAllChildren()
+	print("🏭 PrefabFactory: Cleaned existing templates.")
 else
 	templates = Instance.new("Folder")
 	templates.Name = TEMPLATES_FOLDER_NAME
-	templates.Parent = ServerStorage
+	templates.Parent = ReplicatedStorage
+	print("🏭 PrefabFactory: Created new Templates folder in ReplicatedStorage.")
 end
 
 -- 2. Factory functions for Master Prefabs
@@ -21,7 +24,6 @@ local function createMasterBlock()
 	block.Anchored = true
 	
 	-- Optimized Physics
-	block.CollisionFidelity = Enum.CollisionFidelity.Box
 	block.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5) -- Friction = 1
 
 	-- Neon Border SelectionBox
@@ -75,6 +77,13 @@ local function createMasterPlatform()
 	platform.Size = Vector3.new(1, 20, 20)
 	platform.CFrame = CFrame.Angles(0, 0, math.rad(90))
 	platform.Anchored = true
+	
+	-- Visibility Glow
+	local light = Instance.new("PointLight")
+	light.Range = 30
+	light.Brightness = 2
+	light.Parent = platform
+
 	platform.Parent = templates
 end
 
@@ -107,13 +116,15 @@ local function createMasterGem()
 	gem.Parent = templates
 end
 
--- 3. Run Factory
+-- 4. Signal Ready
+print("🏭 PrefabFactory: Creating Master Prefabs...")
 createMasterBlock()
 createMasterPlatform()
 createMasterPad()
 createMasterGem()
 
--- 4. Signal Ready
 local readyVal = Instance.new("StringValue")
 readyVal.Name = "FactoryReady"
+readyVal.Value = "Ready"
 readyVal.Parent = templates
+print("🏭 PrefabFactory: Ready signal sent!")

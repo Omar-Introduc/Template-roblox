@@ -2,19 +2,29 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local _Debris = game:GetService("Debris")
 local _CollectionService = game:GetService("CollectionService")
-local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 -- Wait for Factory
-local Templates = ServerStorage:WaitForChild("Templates")
-Templates:WaitForChild("FactoryReady")
+print("🏃 ParkourSystem: Waiting for Templates in ReplicatedStorage...")
+local Templates = ReplicatedStorage:WaitForChild("Templates", 15)
+if not Templates then
+	error("🛑 ParkourSystem: TIMEOUT waiting for Templates folder!")
+end
 
--- 1. Configuration: Path & Levels
+print("🏃 ParkourSystem: Waiting for FactoryReady signal...")
+local ready = Templates:WaitForChild("FactoryReady", 15)
+if not ready then
+	error("🛑 ParkourSystem: TIMEOUT waiting for FactoryReady signal!")
+end
+print("🏃 ParkourSystem: Factory is ready. Starting level generation...")
+
+-- 1. Configuration: Path & Levels (Optimized Spiral)
 local LEVEL_CONFIGS = {
-	{ Position = Vector3.new(300, 70, 0), Name = "Level1" },
-	{ Position = Vector3.new(0, 140, 300), Name = "Level2" },
-	{ Position = Vector3.new(-300, 210, 0), Name = "Level3" },
-	{ Position = Vector3.new(0, 280, -300), Name = "Level4" },
+	{ Position = Vector3.new(120, 30, 0), Name = "Level1" },   -- Lowered from 35 to 30 for better lobby jump
+	{ Position = Vector3.new(0, 65, 120), Name = "Level2" },    -- Adjusted (+35 from Level 1)
+	{ Position = Vector3.new(-120, 100, 0), Name = "Level3" },
+	{ Position = Vector3.new(0, 135, -120), Name = "Level4" },
 }
 
 local BIOME_CONFIG = {
@@ -190,27 +200,51 @@ end
 -- CORE LOGIC
 --------------------------------------------------------------------------------
 
-spawnNextBlock = function(player, levelIndex)
+spawnNextBlock = function(player, levelIndex, originOverride)
 	local diff = DIFFICULTY_SETTINGS[levelIndex]
 	local biome = BIOME_CONFIG[levelIndex]
 	local folder = Templates
 	
 	local path = playerPaths[player]
-	local lastBlock = path.LastBlock
+	local lastBlock = originOverride or path.LastBlock
+	if not lastBlock then 
+		warn("🏃 ParkourSystem: spawnNextBlock failed - no origin for player " .. player.Name)
+		return nil 
+	end
+	
 	local lastPos = lastBlock.Position
 	
 	local targetLevel = LEVEL_CONFIGS[levelIndex]
 	local targetPos = targetLevel.Position
 	
-	-- Calculate Direction towards Level Platform
-	local dirToTarget = (targetPos - lastPos).Unit
-	local dist = math.random(diff.MinDist * 10, diff.MaxDist * 10) / 10
+	-- 1. Calculate the Direct Vector towards target
+	local vectorToTarget = (targetPos - lastPos)
+	local distToTarget = vectorToTarget.Magnitude
+	local dirToTarget = vectorToTarget.Unit
 	
-	-- Add some horizontal variance
-	local angle = (math.random() - 0.5) * math.rad(diff.Variance * 10)
-	local rotatedDir = CFrame.Angles(0, angle, 0) * dirToTarget
+	-- 2. Determine Jump Distance with Overshoot Protection
+	local jumpDist = math.random(diff.MinDist * 10, diff.MaxDist * 10) / 10
 	
-	local finalPos = lastPos + (rotatedDir * dist)
+	-- If very close, just snap slightly before the platform to ensure a good final jump
+	if distToTarget < jumpDist + 10 then
+		jumpDist = math.max(diff.MinDist, distToTarget - 8)
+	end
+	
+	-- 3. Horizontal Direction with Variance
+	local horizontalDir = Vector3.new(dirToTarget.X, 0, dirToTarget.Z).Unit
+	local angle = (math.random() - 0.5) * math.rad(diff.Variance * 12) -- Slightly more variance control
+	local rotatedDir = CFrame.Angles(0, angle, 0) * horizontalDir
+	
+	-- 4. Calculate Vertical Step (Smooth Progression)
+	-- Proportional height step based on how much distance we are covering
+	local heightStep = (targetPos.Y - lastPos.Y) * (jumpDist / distToTarget)
+	
+	local finalPos = lastPos + (rotatedDir * jumpDist) + Vector3.new(0, heightStep, 0)
+	
+	-- 5. Safety: Boundary Check (Don't spawn inside target)
+	if (finalPos - targetPos).Magnitude < 10 then
+		finalPos = lastPos + (dirToTarget * (distToTarget - 12)) -- Back off to ensure a gap
+	end
 	
 	-- Clone Master Prefab
 	local block = folder.MasterBlock:Clone()
@@ -306,7 +340,7 @@ startPath = function(player, startPad)
 	}
 
 	local currentLevel = playerProgress[player] or 0
-	local firstBlock = spawnNextBlock(player, currentLevel + 1)
+	local firstBlock = spawnNextBlock(player, currentLevel + 1, startPad)
 
 	if firstBlock then
 		playerPaths[player].LastBlock = firstBlock
@@ -318,9 +352,10 @@ end
 --------------------------------------------------------------------------------
 
 local function createStarterPads()
-	local lobbyPart = Workspace:WaitForChild("Lobby", 5)
+	-- Wait for the Lobby to be created by lobby.server.luau
+	local lobbyPart = Workspace:WaitForChild("Lobby", 10)
 	if not lobbyPart then
-		warn("Lobby not found! Using fallback.")
+		warn("⚠️ Lobby not found! Make sure lobby.server.luau is running.")
 		return
 	end
 
@@ -335,14 +370,22 @@ local function createStarterPads()
 		applyBiome(pad, biome)
 
 		local distFromCenter = 0
+		local heightOffset = 0.6
+		
 		if sourcePart.Name:find("Level") then
-			distFromCenter = (sourcePart.Size.Y / 2) - 2.5
+			-- It's a Cylinder (MasterPlatform)
+			-- Horizontal dist from center axis
+			distFromCenter = (sourcePart.Size.Z / 2) - 2.5
+			-- Vertical offset to sit ON TOP of the cylinder radius (Size.Z / 2)
+			heightOffset = (sourcePart.Size.Z / 2) + 0.5
 		else
-			distFromCenter = (sourcePart.Size.X / 2) - 2.5
+			-- It's the Lobby (Box)
+			distFromCenter = (sourcePart.Size.X / 2) - 3.5
+			heightOffset = (sourcePart.Size.Y / 2) + 0.1
 		end
 
 		local dir = (targetPos - sourcePart.Position).Unit
-		pad.Position = sourcePart.Position + (dir * distFromCenter) + Vector3.new(0, 0.6, 0)
+		pad.Position = sourcePart.Position + (dir * (distFromCenter + 2)) + Vector3.new(0, heightOffset, 0)
 		pad.CFrame = CFrame.lookAt(pad.Position, Vector3.new(targetPos.X, pad.Position.Y, targetPos.Z))
 		pad.Parent = Workspace
 
@@ -375,6 +418,7 @@ local function createStarterPads()
 end
 
 local function createLevels()
+	print("🏃 ParkourSystem: Creating " .. #LEVEL_CONFIGS .. " levels...")
 	for i, config in ipairs(LEVEL_CONFIGS) do
 		local biome = BIOME_CONFIG[i]
 		local pad = Templates.MasterPad:Clone()
@@ -390,16 +434,23 @@ local function createLevels()
 		applyBiome(levelPlatform, biome)
 		levelParts[i] = levelPlatform
 
+		local levelDebounce = false
 		levelPlatform.Touched:Connect(function(hit)
+			if levelDebounce then return end
 			local player = Players:GetPlayerFromCharacter(hit.Parent)
 			if player then
-				if playerPaths[player] then
-					playerPaths[player].LastBlock = nil
-					cleanupPlayerPath(player)
-				end
-
+				levelDebounce = true
+				
+				-- Only cleanup path if this is a NEW level for the player
+				-- or if they were in the middle of a path to THIS level.
 				local currentProgress = playerProgress[player] or 0
+				
 				if i > currentProgress then
+					if playerPaths[player] then
+						playerPaths[player].LastBlock = nil
+						cleanupPlayerPath(player)
+					end
+					
 					playerProgress[player] = i
 					print(player.Name .. " UNLOCKED " .. config.Name)
 					
@@ -413,6 +464,7 @@ local function createLevels()
 					-- Apply immediate rewards
 					applyRewards(player, i)
 					
+					-- Screen Notification
 					-- Screen Notification
 					task.spawn(function()
 						local playerGui = player:FindFirstChild("PlayerGui")
@@ -434,6 +486,9 @@ local function createLevels()
 						end
 					end)
 				end
+				
+				task.wait(0.5)
+				levelDebounce = false
 			end
 		end)
 	end
