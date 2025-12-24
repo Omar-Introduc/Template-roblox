@@ -26,10 +26,9 @@ local VerifyTrajectory = ServerStorage:WaitForChild("VerifyTrajectory", 30)
 
 -- Espera de Templates (Crítico)
 local Templates = ReplicatedStorage:WaitForChild("Templates")
-local FactorySignal = Templates:WaitForChild("FactoryReady", 30)
-if not FactorySignal then
-	Logger.Critical("🛑 ERROR CRÍTICO: PrefabFactory no respondió a tiempo.")
-	error("🛑 ERROR CRÍTICO: PrefabFactory no respondió a tiempo.")
+-- CORRECCIÓN: Usar atributo estándar en lugar de Child
+if not Templates:GetAttribute("PrefabReady") then
+	Templates:GetAttributeChangedSignal("PrefabReady"):Wait()
 end
 
 -- Configuración de Niveles (Separación > 150 Studs garantizada)
@@ -153,6 +152,11 @@ local function spawnBlock(player, levelIndex, originPart)
 	local block = prefab:Clone()
 	block.Name = "Path_" .. player.Name
 	block:PivotTo(CFrame.new(nextPos, nextPos + dirToTarget)) -- Orientar hacia adelante
+
+	-- CORRECCIÓN: Sincronización de Tiempo para el Cliente
+	block:SetAttribute("CreationTime", workspace:GetServerTimeNow())
+	block:SetAttribute("LifeTime", diff.LifeTime)
+
 	block.Parent = Workspace
 
 	-- Registro
