@@ -13,6 +13,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
+local ServerStorage = game:GetService("ServerStorage")
+
+local Logger = require(ReplicatedStorage.Shared.Logger)
+
+-- Validation System Connection
+local VerifyTrajectory = ServerStorage:WaitForChild("VerifyTrajectory", 30)
 
 --------------------------------------------------------------------------------
 -- 1. CONFIGURACIÓN Y CONSTANTES
@@ -22,6 +28,7 @@ local Debris = game:GetService("Debris")
 local Templates = ReplicatedStorage:WaitForChild("Templates")
 local FactorySignal = Templates:WaitForChild("FactoryReady", 30)
 if not FactorySignal then
+	Logger.Critical("🛑 ERROR CRÍTICO: PrefabFactory no respondió a tiempo.")
 	error("🛑 ERROR CRÍTICO: PrefabFactory no respondió a tiempo.")
 end
 
@@ -114,6 +121,29 @@ local function spawnBlock(player, levelIndex, originPart)
 	local heightStep = math.clamp((targetPos.Y - startPos.Y) / (distTotal / jumpDist), 0, 4)
 	
 	local nextPos = startPos + (finalDir * jumpDist) + Vector3.new(0, heightStep, 0)
+
+	-- VERIFICACIÓN DE TRAYECTORIA
+	if VerifyTrajectory then
+		local isSafe, reason = VerifyTrajectory:Invoke(startPos, nextPos)
+		if not isSafe then
+			Logger.Error(string.format("Spawn Block Blocked: %s (Lvl %d)", reason, levelIndex))
+			-- Optional: Try to adjust position or abort?
+			-- For now, we log and proceed or slightly adjust?
+			-- "Antes de spawnear un bloque... debe verificar" implies we might want to stop or retry.
+			-- Let's retry once with a different angle?
+			-- Simple retry logic:
+			angle = angle + math.rad(20)
+			finalDir = CFrame.Angles(0, angle, 0) * dirToTarget
+			nextPos = startPos + (finalDir * jumpDist) + Vector3.new(0, heightStep, 0)
+
+			-- Re-check
+			isSafe, reason = VerifyTrajectory:Invoke(startPos, nextPos)
+			if not isSafe then
+				Logger.Error("Spawn Block Retry Failed. Aborting block spawn.")
+				return
+			end
+		end
+	end
 
 	-- Instanciación
 	local folder = Templates:FindFirstChild("Level" .. levelIndex)
