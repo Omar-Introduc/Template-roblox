@@ -1,143 +1,141 @@
+--[[
+    🏃 ParkourSystem - Core Gameplay Logic
+
+    Responsabilidad: Gestionar la generación procedural de caminos, progreso del jugador y checkpoints.
+    Optimizado para evitar conflictos de posicionamiento y garantizar la activación de eventos.
+
+    Autor: Arquitecto de Sistemas Roblox (IA)
+]]
+
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local Debris = game:GetService("Debris")
-local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
 
--- 1. Inicialización y Espera de Fábrica
-print("🏃 ParkourSystem: Inicializando...")
+--------------------------------------------------------------------------------
+-- 1. CONFIGURACIÓN Y CONSTANTES
+--------------------------------------------------------------------------------
+
+-- Espera de Templates (Crítico)
 local Templates = ReplicatedStorage:WaitForChild("Templates")
-
--- Esperar señal de listo
-local readySignal = Templates:WaitForChild("FactoryReady", 20)
-if not readySignal then
-	error("🛑 CRÍTICO: FactoryReady no recibido. Revise PrefabFactory.")
+local FactorySignal = Templates:WaitForChild("FactoryReady", 30)
+if not FactorySignal then
+	error("🛑 ERROR CRÍTICO: PrefabFactory no respondió a tiempo.")
 end
-print("✅ ParkourSystem: Templates cargados.")
 
--- 2. Configuración de Niveles (Separación > 150 Studs)
-local LEVEL_CONFIGS = {
-	{ Position = Vector3.new(300, 45, 0),    Name = "Nivel 1: Christmas" },
-	{ Position = Vector3.new(0, 90, 300),    Name = "Nivel 2: Neon City" },
-	{ Position = Vector3.new(-300, 135, 0),  Name = "Nivel 3: Toxic Waste" },
-	{ Position = Vector3.new(0, 180, -300),  Name = "Nivel 4: Void" },
+-- Configuración de Niveles (Separación > 150 Studs garantizada)
+local LEVEL_DATA = {
+	{ Index = 1, Name = "Neon Forest",      Pos = Vector3.new(300, 50, 0) },
+	{ Index = 2, Name = "Electric Ocean",   Pos = Vector3.new(0, 100, 300) },
+	{ Index = 3, Name = "Lava Underworld",  Pos = Vector3.new(-300, 150, 0) },
+	{ Index = 4, Name = "Galactic Void",    Pos = Vector3.new(0, 200, -300) }
 }
 
-local BIOME_CONFIG = {
-	[1] = { Color = Color3.fromRGB(200, 240, 255), Material = Enum.Material.Ice },
-	[2] = { Color = Color3.fromRGB(255, 0, 100),   Material = Enum.Material.Neon },
-	[3] = { Color = Color3.fromRGB(50, 255, 50),   Material = Enum.Material.CorrodedMetal },
-	[4] = { Color = Color3.fromRGB(100, 0, 255),   Material = Enum.Material.ForceField }
+-- Configuración de Dificultad (Ascendente)
+local DIFFICULTY = {
+	[1] = { DistMin = 10, DistMax = 14, Variance = 2,  LifeTime = 5.0 },
+	[2] = { DistMin = 12, DistMax = 16, Variance = 4,  LifeTime = 4.5 },
+	[3] = { DistMin = 14, DistMax = 18, Variance = 6,  LifeTime = 4.0 },
+	[4] = { DistMin = 16, DistMax = 20, Variance = 8,  LifeTime = 3.5 },
 }
 
-local DIFFICULTY_SETTINGS = {
-	[1] = { MinDist = 12, MaxDist = 14, Variance = 2, Time = 5 },
-	[2] = { MinDist = 14, MaxDist = 16, Variance = 4, Time = 4.5 },
-	[3] = { MinDist = 16, MaxDist = 18, Variance = 6, Time = 4 },
-	[4] = { MinDist = 18, MaxDist = 22, Variance = 8, Time = 3.5 },
-}
-
--- Estado del Juego
-local playerPaths = {}    -- { LastBlock, AllBlocks }
-local playerProgress = {} -- Nivel desbloqueado
-local levelParts = {}     -- Referencias a plataformas de nivel
-
--- Declaraciones Forward
-local spawnNextBlock, startPath, cleanupPlayerPath
+-- Estado de Juego
+local playerSessions = {} -- { [Player] = { CurrentPath = {}, Active = bool, Level = int } }
+local levelCheckpoints = {}
 
 --------------------------------------------------------------------------------
--- UTILIDADES VISUALES
+-- 2. UTILIDADES DEL SISTEMA
 --------------------------------------------------------------------------------
 
-local function applyBiome(part, levelIndex)
-	local config = BIOME_CONFIG[levelIndex]
-	if not config then return end
-	
-	if part:IsA("BasePart") then
-		part.Color = config.Color
-		part.Material = config.Material
+local function getPlayerSession(player)
+	if not playerSessions[player] then
+		playerSessions[player] = {
+			CurrentPath = {},
+			Active = false,
+			Level = 0 -- 0 = Lobby
+		}
 	end
-	
-	-- Recursivo para modelos
-	for _, child in ipairs(part:GetDescendants()) do
-		if child:IsA("BasePart") and not child.Name:find("Touch") then
-			child.Color = config.Color
-			child.Material = config.Material
+	return playerSessions[player]
+end
+
+local function cleanupPath(player)
+	local session = playerSessions[player]
+	if session and session.CurrentPath then
+		for _, block in ipairs(session.CurrentPath) do
+			if block and block.Parent then
+				-- Efecto de desaparición elegante
+				TweenService:Create(block, TweenInfo.new(0.5), {Transparency = 1, Size = Vector3.new(0,0,0)}):Play()
+				Debris:AddItem(block, 0.5)
+			end
 		end
+		session.CurrentPath = {}
+		session.Active = false
 	end
 end
 
 --------------------------------------------------------------------------------
--- LÓGICA CORE
+-- 3. LÓGICA DE GENERACIÓN PROCEDURAL
 --------------------------------------------------------------------------------
 
-spawnNextBlock = function(player, levelIndex, originOverride)
-	local path = playerPaths[player]
-	if not path then return nil end
+local function spawnBlock(player, levelIndex, originPart)
+	local session = getPlayerSession(player)
+	local diff = DIFFICULTY[levelIndex]
+	local targetPos = LEVEL_DATA[levelIndex].Pos
 
-	local lastBlock = originOverride or path.LastBlock
-	if not lastBlock then return nil end
-
-	-- Obtener posición pivot (compatible con Modelos y Partes)
-	local lastPos = (lastBlock:IsA("Model") and lastBlock:GetPivot().Position) or lastBlock.Position
-	local targetPos = LEVEL_CONFIGS[levelIndex].Position
-	local diff = DIFFICULTY_SETTINGS[levelIndex]
-
-	-- Cálculos de Vector
-	local vecToTarget = (targetPos - lastPos) * Vector3.new(1,0,1) -- Plano Horizontal
-	local distToTarget = vecToTarget.Magnitude
-	local dirToTarget = vecToTarget.Unit
-
-	-- Determinar siguiente posición
-	local jumpDist = math.random(diff.MinDist * 10, diff.MaxDist * 10) / 10
-	
-	-- Ajuste final si está cerca
-	if distToTarget < jumpDist + 5 then
-		jumpDist = distToTarget - 5 -- Aterrizaje suave antes de la plataforma
-	end
-
-	-- Varianza (Curva espiral)
-	local angle = math.rad(math.random(-diff.Variance * 5, diff.Variance * 5))
-	local nextDir = CFrame.Angles(0, angle, 0) * dirToTarget
-	
-	-- Altura (Escalera progresiva)
-	local heightStep = (LEVEL_CONFIGS[levelIndex].Position.Y - lastPos.Y) / (distToTarget / jumpDist)
-	heightStep = math.clamp(heightStep, 0, 4) -- Límite físico de salto Roblox
-
-	local nextPos = lastPos + (nextDir * jumpDist) + Vector3.new(0, heightStep, 0)
-
-	-- SPAWN
-	-- Búsqueda inteligente de Prefabs por nivel
-	local levelFolder = Templates:FindFirstChild("Level" .. levelIndex)
-	local template = levelFolder and levelFolder:FindFirstChild("ParkourBlock")
-	
-	if not template then
-		warn("⚠️ No se encontró ParkourBlock para Nivel " .. levelIndex .. ". Usando Fallback.")
-		-- Fallback a nivel 1 o genérico si existe
-		template = Templates.Level1.ParkourBlock
-	end
-
-	local block = template:Clone()
-	block.Name = "Path_" .. player.Name
-	block:PivotTo(CFrame.new(nextPos, nextPos + dirToTarget)) -- Mirar al objetivo
-	block.Parent = Workspace
-	
-	applyBiome(block, levelIndex)
-
-	-- Animación de Aparición (Pop-up)
-	local targetSize = (block:IsA("Model") and block.PrimaryPart.Size) or block.Size
-	if block:IsA("Model") then
-		block:ScaleTo(0.1)
-		local tween = TweenService:Create(block.PrimaryPart, TweenInfo.new(0.5, Enum.EasingStyle.Bounce), {Size = targetSize}) -- Nota: ScaleTo no se anima directamete, esto es simplificación.
-		-- Mejor aproximación para Modelos: ScaleTo manual en loop o Tween de PrimaryPart si es simple
-		block:ScaleTo(1) -- Reset para evitar complejidad ahora
+	-- Determinar origen (Bloque anterior o Pad inicial)
+	local startPos = Vector3.zero
+	if typeof(originPart) == "Instance" then
+		startPos = (originPart:IsA("Model") and originPart:GetPivot().Position) or originPart.Position
 	else
-		block.Size = Vector3.new(0,0,0)
-		TweenService:Create(block, TweenInfo.new(0.5, Enum.EasingStyle.Back), {Size = targetSize}):Play()
+		-- Si no hay origen válido, abortar
+		return
 	end
 
-	-- Lógica de Pisado
+	-- Cálculos vectoriales
+	local vecToTarget = (targetPos - startPos) * Vector3.new(1,0,1) -- Proyección plana
+	local distTotal = vecToTarget.Magnitude
+	local dirToTarget = vecToTarget.Unit
+	
+	-- Parámetros del salto
+	local jumpDist = math.random(diff.DistMin * 10, diff.DistMax * 10) / 10
+
+	-- Caso final: Cerca de la meta
+	if distTotal < (jumpDist + 5) then
+		jumpDist = distTotal - 4 -- Aterrizaje suave
+	end
+
+	-- Variación angular (Espiral)
+	local angle = math.rad(math.random(-diff.Variance * 5, diff.Variance * 5))
+	local finalDir = CFrame.Angles(0, angle, 0) * dirToTarget
+	
+	-- Variación de altura (Escalera)
+	local heightStep = math.clamp((targetPos.Y - startPos.Y) / (distTotal / jumpDist), 0, 4)
+	
+	local nextPos = startPos + (finalDir * jumpDist) + Vector3.new(0, heightStep, 0)
+
+	-- Instanciación
+	local folder = Templates:FindFirstChild("Level" .. levelIndex)
+	local prefab = folder and folder:FindFirstChild("ParkourBlock")
+	if not prefab then prefab = Templates.Level1.ParkourBlock end -- Fallback
+
+	local block = prefab:Clone()
+	block.Name = "Path_" .. player.Name
+	block:PivotTo(CFrame.new(nextPos, nextPos + dirToTarget)) -- Orientar hacia adelante
+	block.Parent = Workspace
+
+	-- Registro
+	table.insert(session.CurrentPath, block)
+
+	-- Animación de Entrada
+	local targetSize = (block:IsA("Model") and block.PrimaryPart.Size) or block.Size
+	if block:IsA("BasePart") then
+		block.Size = Vector3.new(0,0,0)
+		TweenService:Create(block, TweenInfo.new(0.4, Enum.EasingStyle.Back), {Size = targetSize}):Play()
+	end
+
+	-- Lógica de Interacción (Touch)
 	local touchPart = (block:IsA("Model") and block.PrimaryPart) or block
 	local db = false
 	
@@ -147,173 +145,149 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 		if p == player then
 			db = true
 
-			-- Efecto visual
-			local sound = block:FindFirstChild("JumpSound", true)
-			if sound then sound:Play() end
+			-- Sonido
+			local sfx = block:FindFirstChild("JumpSound", true)
+			if sfx then sfx:Play() end
 
-			-- Generar siguiente
-			path.LastBlock = block
-			spawnNextBlock(player, levelIndex)
+			-- Generar siguiente paso
+			spawnBlock(player, levelIndex, block)
 
-			-- Destruir bloque anterior (Efecto puente cayendo)
+			-- Destruir anterior (Presión de tiempo/Gameplay)
 			task.delay(0.5, function()
-				if block and block.Parent then
-					TweenService:Create(touchPart, TweenInfo.new(0.3), {Transparency = 1, Position = touchPart.Position - Vector3.new(0,5,0)}):Play()
-					Debris:AddItem(block, 0.3)
+				if block.Parent then
+					TweenService:Create(touchPart, TweenInfo.new(1), {Transparency = 1, Position = touchPart.Position - Vector3.new(0, 5, 0)}):Play()
+					Debris:AddItem(block, 1)
 				end
 			end)
 		end
 	end)
 
-	table.insert(path.AllBlocks, block)
-	path.LastBlock = block
-
-	-- Auto-destrucción por tiempo (Pressure)
-	task.delay(diff.Time, function()
-		if block and block.Parent then
+	-- Auto-destrucción por inactividad
+	task.delay(diff.LifeTime, function()
+		if block.Parent then
 			block:Destroy()
-			-- Si era el último bloque y el jugador no saltó, se cae
+			-- Si el jugador estaba sobre este bloque, caerá
 		end
 	end)
-
-	return block
-end
-
-startPath = function(player, startPad, targetLevelIndex)
-	cleanupPlayerPath(player)
-
-	playerPaths[player] = {
-		LastBlock = nil,
-		AllBlocks = {},
-		TargetLevel = targetLevelIndex
-	}
-
-	print("🚀 Iniciando camino para " .. player.Name .. " hacia Nivel " .. targetLevelIndex)
-	spawnNextBlock(player, targetLevelIndex, startPad)
-end
-
-cleanupPlayerPath = function(player)
-	if playerPaths[player] then
-		for _, b in ipairs(playerPaths[player].AllBlocks) do
-			if b then b:Destroy() end
-		end
-	end
-	playerPaths[player] = nil
 end
 
 --------------------------------------------------------------------------------
--- GENERACIÓN DE MUNDO
+-- 4. SISTEMA DE ACTIVADORES (PADS)
 --------------------------------------------------------------------------------
 
-local function makePad(sourcePart, levelIndexForUnlock)
-	local targetLevelIndex = levelIndexForUnlock + 1
-	if targetLevelIndex > #LEVEL_CONFIGS then return end
+local function createStarterPad(sourcePart, levelIndexToUnlock)
+	local nextLevelIdx = levelIndexToUnlock + 1
+	if nextLevelIdx > #LEVEL_DATA then return end -- No hay más niveles
 	
-	local levelFolder = Templates:FindFirstChild("Level" .. targetLevelIndex)
-	local padTemplate = levelFolder and levelFolder:FindFirstChild("StarterPad")
+	local targetConfig = LEVEL_DATA[nextLevelIdx]
 	
-	if not padTemplate then
-		warn("❌ Falta StarterPad en Level" .. targetLevelIndex)
+	-- Obtener Prefab Correcto
+	local folder = Templates:FindFirstChild("Level" .. nextLevelIdx)
+	local template = folder and folder:FindFirstChild("StarterPad")
+	if not template then
+		warn("⚠️ StarterPad no encontrado para Nivel " .. nextLevelIdx)
 		return
 	end
 
-	local pad = padTemplate:Clone()
-	pad.Name = "StarterPad_L" .. targetLevelIndex
+	local pad = template:Clone()
+	pad.Name = "StarterPad_Level" .. nextLevelIdx
 
-	-- POSICIONAMIENTO CORREGIDO (Suprema Prompt)
-	local sourcePos = (sourcePart:IsA("Model") and sourcePart:GetPivot().Position) or sourcePart.Position
-	local sourceSize = (sourcePart:IsA("Model") and sourcePart:GetExtentsSize()) or sourcePart.Size
+	-- POSICIONAMIENTO MATEMÁTICO PRECISO (Anti-Bug)
+	local sPos = (sourcePart:IsA("Model") and sourcePart:GetPivot().Position) or sourcePart.Position
+	local sSize = (sourcePart:IsA("Model") and sourcePart:GetExtentsSize()) or sourcePart.Size
 
-	-- En el borde mirando al objetivo
-	local targetPos = LEVEL_CONFIGS[targetLevelIndex].Position
-	local dir = (targetPos - sourcePos).Unit
-	local offset = (sourceSize.X / 2) - 2 -- Un poco dentro del borde
+	-- Fórmula: Superficie superior + 0.5 studs
+	local finalY = sPos.Y + (sSize.Y / 2) + 0.5
 
-	-- FÓRMULA CLAVE: Y + Size/2 + 0.5
-	local finalY = sourcePos.Y + (sourceSize.Y / 2) + 0.5
+	-- Dirección hacia el objetivo para ubicarlo en el borde
+	local dirToTarget = (targetConfig.Pos - sPos) * Vector3.new(1,0,1)
+	dirToTarget = dirToTarget.Unit
+	local offsetDist = (sSize.X / 2) - 4 -- 4 studs hacia adentro del borde
 
-	local finalPos = sourcePos + (dir * offset)
-	finalPos = Vector3.new(finalPos.X, finalY, finalPos.Z)
+	local finalPos = Vector3.new(sPos.X, finalY, sPos.Z) + (dirToTarget * offsetDist)
 
 	pad.Position = finalPos
-	pad.CFrame = CFrame.lookAt(finalPos, Vector3.new(targetPos.X, finalPos.Y, targetPos.Z))
+	pad.CFrame = CFrame.lookAt(finalPos, Vector3.new(targetConfig.Pos.X, finalPos.Y, targetConfig.Pos.Z))
 	pad.Parent = Workspace
 
-	-- Conexión de Activación
+	-- Lógica de Activación
 	local db = false
 	pad.Touched:Connect(function(hit)
 		if db then return end
 		local player = Players:GetPlayerFromCharacter(hit.Parent)
 		if player then
-			local pProgress = playerProgress[player] or 0
-			if pProgress >= levelIndexForUnlock then
+			local session = getPlayerSession(player)
+
+			-- Verificar requisitos (Progreso)
+			if session.Level >= levelIndexToUnlock then
 				db = true
-				print("✨ Jugador " .. player.Name .. " activó StarterPad Nivel " .. targetLevelIndex)
+				print("✨ Activando camino para " .. player.Name .. " -> " .. targetConfig.Name)
 
-				-- Efecto visual de activación
-				local highlight = Instance.new("Highlight")
-				highlight.FillColor = Color3.new(1,1,1)
-				highlight.Parent = pad
-				Debris:AddItem(highlight, 0.2)
+				cleanupPath(player) -- Limpiar intentos previos
+				session.Active = true
 
-				startPath(player, pad, targetLevelIndex)
+				-- Feedback Visual
+				pad.Color = Color3.new(1,1,1) -- Flash blanco
+				local hl = Instance.new("Highlight")
+				hl.FillColor = Color3.new(1,1,1); hl.OutlineTransparency=1; hl.Parent=pad
+				Debris:AddItem(hl, 0.3)
+
+				spawnBlock(player, nextLevelIdx, pad)
+
 				task.wait(1)
+				pad.Color = Color3.fromRGB(255, 255, 0) -- Restaurar amarillo
 				db = false
 			else
-				-- Feedback visual de "Bloqueado" (Rojo)
-				pad.Color = Color3.new(1, 0, 0)
+				-- Feedback Negativo
+				pad.Color = Color3.new(1,0,0)
 				task.wait(0.5)
-				pad.Color = Color3.fromRGB(255, 255, 0) -- Vuelta al amarillo
+				pad.Color = Color3.fromRGB(255, 255, 0)
 			end
 		end
 	end)
 end
 
 local function setupWorld()
-	-- 1. Buscar Lobby
-	local lobby = Workspace:WaitForChild("Lobby", 10)
-	if not lobby then
-		warn("⚠️ Lobby no encontrado, buscando fallback...")
-		lobby = Workspace:FindFirstChild("LobbyIsland") or Workspace:FindFirstChild("Baseplate")
-	end
+	print("🌍 Construyendo mundo de Parkour...")
 	
+	-- 1. Vincular Lobby
+	local lobby = Workspace:WaitForChild("Lobby", 10)
 	if lobby then
-		makePad(lobby, 0) -- Pad para Nivel 1
+		createStarterPad(lobby, 0) -- Desbloquea Nivel 1
+	else
+		warn("⚠️ Lobby no encontrado. El juego podría no iniciar correctamente.")
 	end
 
-	-- 2. Crear Plataformas de Nivel
-	for i, config in ipairs(LEVEL_CONFIGS) do
-		local folder = Templates:FindFirstChild("Level" .. i)
-		local platTemplate = folder and folder:FindFirstChild("LevelPlatform")
+	-- 2. Crear Plataformas de Niveles
+	for _, config in ipairs(LEVEL_DATA) do
+		local folder = Templates:FindFirstChild("Level" .. config.Index)
+		local platPrefab = folder and folder:FindFirstChild("LevelPlatform")
 		
-		if platTemplate then
-			local plat = platTemplate:Clone()
-			plat.Position = config.Position
+		if platPrefab then
+			local plat = platPrefab:Clone()
+			plat.CFrame = CFrame.new(config.Pos)
 			plat.Parent = Workspace
-			levelParts[i] = plat
+			levelCheckpoints[config.Index] = plat
 
-			-- Pad para el SIGUIENTE nivel (si existe)
-			if i < #LEVEL_CONFIGS then
-				makePad(plat, i)
-			end
+			-- Crear pad para el SIGUIENTE nivel
+			createStarterPad(plat, config.Index)
 
-			-- Lógica de Checkpoint/Meta
+			-- Trigger de Meta (Checkpoint)
 			plat.Touched:Connect(function(hit)
-				local player = Players:GetPlayerFromCharacter(hit.Parent)
-				if player then
-					local current = playerProgress[player] or 0
-					if i > current then
-						playerProgress[player] = i
-						print("🏆 " .. player.Name .. " llegó al Nivel " .. i)
+				local p = Players:GetPlayerFromCharacter(hit.Parent)
+				if p then
+					local session = getPlayerSession(p)
+					if config.Index > session.Level then
+						session.Level = config.Index
+						print("🏆 " .. p.Name .. " desbloqueó: " .. config.Name)
 						
-						-- Limpiar camino anterior
-						cleanupPlayerPath(player)
-
 						-- Actualizar Leaderstats
-						local ls = player:FindFirstChild("leaderstats")
+						local ls = p:FindFirstChild("leaderstats")
 						if ls and ls:FindFirstChild("Stage") then
-							ls.Stage.Value = i
+							ls.Stage.Value = config.Index
 						end
+
+						cleanupPath(p) -- Camino completado
 					end
 				end
 			end)
@@ -322,12 +296,11 @@ local function setupWorld()
 end
 
 --------------------------------------------------------------------------------
--- EVENTOS DE JUGADOR
+-- 5. GESTIÓN DE JUGADORES
 --------------------------------------------------------------------------------
 
 Players.PlayerAdded:Connect(function(player)
-	playerProgress[player] = 0
-	
+	-- Inicializar Leaderstats
 	local ls = Instance.new("Folder")
 	ls.Name = "leaderstats"
 	ls.Parent = player
@@ -337,27 +310,31 @@ Players.PlayerAdded:Connect(function(player)
 	stage.Value = 0
 	stage.Parent = ls
 	
+	-- Inicializar Sesión
+	local session = getPlayerSession(player)
+
 	player.CharacterAdded:Connect(function(char)
-		-- Teleportar al último checkpoint
-		task.wait(0.5) -- Esperar carga física
-		local level = playerProgress[player]
-		if level and level > 0 then
-			local plat = levelParts[level]
-			if plat then
-				char:PivotTo(CFrame.new(plat.Position + Vector3.new(0, 5, 0)))
-			end
-		else
-			-- TP al Lobby
-			local lobby = Workspace:FindFirstChild("Lobby")
-			if lobby then
-				char:PivotTo(CFrame.new(lobby.Position + Vector3.new(0, 5, 0)))
+		-- Teleport inteligente al último checkpoint
+		task.wait(0.2)
+		local root = char:WaitForChild("HumanoidRootPart", 5)
+		if root then
+			if session.Level > 0 and levelCheckpoints[session.Level] then
+				local plat = levelCheckpoints[session.Level]
+				root.CFrame = plat.CFrame * CFrame.new(0, 5, 0)
+			else
+				local lobby = Workspace:FindFirstChild("Lobby")
+				if lobby then
+					root.CFrame = CFrame.new(lobby.Position + Vector3.new(0, 5, 0))
+				end
 			end
 		end
 	end)
 end)
 
-Players.PlayerRemoving:Connect(cleanupPlayerPath)
+Players.PlayerRemoving:Connect(function(player)
+	cleanupPath(player)
+	playerSessions[player] = nil
+end)
 
--- Iniciar Sistema
-task.wait(1) -- Pequeña espera para asegurar carga total
-setupWorld()
+-- Arranque
+task.spawn(setupWorld)

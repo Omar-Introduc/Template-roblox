@@ -1,221 +1,186 @@
+--[[
+    🏭 PrefabFactory - Asset Management System
+
+    Responsabilidad: Crear y organizar los modelos base (Prefabs) para cada nivel.
+    Asegura que 'StarterPad' sea visible (Amarillo Neón) y accesible.
+
+    Autor: Arquitecto de Sistemas Roblox (IA)
+]]
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
-local TEMPLATES_FOLDER_NAME = "Templates"
+local TEMPLATES_NAME = "Templates"
 local LEVEL_COUNT = 4
 
--- 1. Inicialización de Carpetas
-print("🏭 PrefabFactory: Iniciando Protocolo de Generación v2.0...")
-local templates = ReplicatedStorage:FindFirstChild(TEMPLATES_FOLDER_NAME)
-if templates then
-	templates:ClearAllChildren()
-	print("   > Limpieza de Templates completada.")
-else
-	templates = Instance.new("Folder")
-	templates.Name = TEMPLATES_FOLDER_NAME
-	templates.Parent = ReplicatedStorage
-	print("   > Carpeta Templates creada.")
-end
+--------------------------------------------------------------------------------
+-- 1. CONFIGURACIÓN DE CARPETAS
+--------------------------------------------------------------------------------
+local function setupFolders()
+	print("🏭 PrefabFactory: Inicializando estructura de carpetas...")
 
--- Crear subcarpetas por nivel
-local levelFolders = {}
-for i = 1, LEVEL_COUNT do
-	local folder = Instance.new("Folder")
-	folder.Name = "Level" .. i
-	folder.Parent = templates
-	levelFolders[i] = folder
-end
-print("   > Carpetas de Nivel (1-4) generadas.")
+	local root = ReplicatedStorage:FindFirstChild(TEMPLATES_NAME)
+	if root then root:Destroy() end -- Reset limpio
 
--- 2. Integración de Assets Externos (ROJO)
-local function loadExternalAssets()
-	local assetFolder = ReplicatedStorage:FindFirstChild("asset")
-	if not assetFolder then
-		warn("⚠️ PrefabFactory: Carpeta 'asset' no encontrada. Se usarán fallbacks.")
-		return
+	root = Instance.new("Folder")
+	root.Name = TEMPLATES_NAME
+	root.Parent = ReplicatedStorage
+
+	local folders = {}
+	for i = 1, LEVEL_COUNT do
+		local f = Instance.new("Folder")
+		f.Name = "Level" .. i
+		f.Parent = root
+		folders[i] = f
 	end
 
-	-- Mapa de carga de assets específicos a carpetas de nivel
-	local assetMap = {
-		{asset = "plataforma1", target = "ParkourBlock", level = 1},
-		{asset = "plataforma2", target = "ParkourBlock", level = 2},
-		-- Agregar más mapeos según sea necesario
-	}
-
-	for _, data in ipairs(assetMap) do
-		local source = assetFolder:FindFirstChild(data.asset)
-		if source then
-			local clone = source:Clone()
-			clone.Name = data.target
-			clone.Parent = levelFolders[data.level]
-			print("   > Asset cargado: " .. data.asset .. " -> Level" .. data.level)
-		end
-	end
+	return root, folders
 end
 
--- 3. Generadores de Prefabs Maestros
+--------------------------------------------------------------------------------
+-- 2. GENERADORES DE PREFABS
+--------------------------------------------------------------------------------
 
--- A. BLOQUE BASE DE PARKOUR (Fallback)
-local function createBaseBlock(parent)
-	local block = Instance.new("Part")
-	block.Name = "ParkourBlock"
-	block.Size = Vector3.new(12, 0.5, 12)
-	block.Anchored = true
-	block.Material = Enum.Material.SmoothPlastic
-	block.Reflectance = 0.1
-	block.Color = Color3.fromRGB(200, 200, 200)
-
-	-- Física optimizada
-	block.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
-
-	-- Decoración visual
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "BlockHighlight"
-	highlight.Adornee = block
-	highlight.FillTransparency = 0.9
-	highlight.OutlineColor = Color3.new(1,1,1)
-	highlight.Parent = block
-
-	-- Sonido
-	local jumpSound = Instance.new("Sound")
-	jumpSound.Name = "JumpSound"
-	jumpSound.SoundId = "rbxassetid://4607031412"
-	jumpSound.Volume = 0.5
-	jumpSound.Parent = block
-
-	-- Timer GUI
-	local sg = Instance.new("SurfaceGui")
-	sg.Name = "TimerGui"; sg.Face = Enum.NormalId.Top; sg.Parent = block
-	local tl = Instance.new("TextLabel")
-	tl.Name = "TimerLabel"; tl.Size = UDim2.fromScale(1,1); tl.BackgroundTransparency=1
-	tl.TextScaled=true; tl.Font=Enum.Font.GothamBold; tl.TextColor3=Color3.new(1,1,1); tl.Text="0.0"
-	tl.Parent = sg
-	local stroke = Instance.new("UIStroke"); stroke.Thickness=6; stroke.Parent=tl
-
-	block.Parent = parent
-	return block
-end
-
--- B. STARTER PAD (Amarillo Neón - Corrección Visual)
-local function createStarterPad(parent)
+-- A. Starter Pad (El activador del camino)
+local function createStarterPad(levelFolder)
 	local pad = Instance.new("Part")
 	pad.Name = "StarterPad"
-	pad.Size = Vector3.new(8, 0.5, 8) -- Ligeramente más pequeño que el bloque
+	pad.Size = Vector3.new(8, 0.5, 8)
 	pad.Anchored = true
 	pad.CanCollide = true
 	
-	-- APARIENCIA CLAVE: Amarillo Neón
+	-- REQUISITO CRÍTICO: Amarillo Neón para alta visibilidad
+	pad.Color = Color3.fromRGB(255, 255, 0)
 	pad.Material = Enum.Material.Neon
-	pad.Color = Color3.fromRGB(255, 255, 0) -- Amarillo Puro
 	
-	-- Partículas de "Aquí estoy"
-	local particles = Instance.new("ParticleEmitter")
-	particles.Name = "Beacon"
-	particles.Texture = "rbxassetid://296874871" -- Soft glow
-	particles.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0))
-	particles.Size = NumberSequence.new(0.5, 0)
-	particles.Lifetime = NumberRange.new(1, 1.5)
-	particles.Rate = 5
-	particles.Speed = NumberRange.new(2, 4)
-	particles.EmissionDirection = Enum.NormalId.Top
-	particles.Parent = pad
+	-- Efectos Visuales (Partículas para llamar la atención)
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "Glow"
+	emitter.Texture = "rbxassetid://296874871" -- Textura suave
+	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+	emitter.Size = NumberSequence.new(1)
+	emitter.Lifetime = NumberRange.new(1, 2)
+	emitter.Rate = 4
+	emitter.Speed = NumberRange.new(2)
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Parent = pad
 
-	-- Flecha flotante (Visual aid)
-	local arrow = Instance.new("Part")
-	arrow.Name = "Arrow"
-	arrow.Size = Vector3.new(2, 2, 2)
-	arrow.Shape = Enum.PartType.Cylinder -- Aproximación
-	arrow.Color = Color3.fromRGB(255, 255, 0)
-	arrow.Material = Enum.Material.Neon
-	arrow.Anchored = true
-	arrow.CanCollide = false
-	arrow.Transparency = 0.5
-	arrow.Position = pad.Position + Vector3.new(0, 3, 0)
-	-- Nota: La animación se hará localmente o con TweenService al instanciar
+	-- Indicador Flotante (Flecha/Boya)
+	local marker = Instance.new("Part")
+	marker.Name = "Marker"
+	marker.Size = Vector3.new(1, 1, 1)
+	marker.Shape = Enum.PartType.Ball
+	marker.Color = Color3.fromRGB(255, 255, 0)
+	marker.Material = Enum.Material.Neon
+	marker.Transparency = 0.3
+	marker.Position = pad.Position + Vector3.new(0, 4, 0)
+	marker.CanCollide = false
+	marker.Anchored = true
+	-- Nota: ParkourSystem clonará esto, la animación debe ser manejada allí o con un script local si se desea.
 	
-	pad.Parent = parent
+	pad.Parent = levelFolder
 	return pad
 end
 
--- C. PLATAFORMA DE NIVEL
-local function createLevelPlatform(parent)
-	local platform = Instance.new("Part")
-	platform.Name = "LevelPlatform"
-	platform.Size = Vector3.new(30, 2, 30)
-	platform.Anchored = true
-	platform.Material = Enum.Material.Glass
-	platform.Color = Color3.fromRGB(50, 50, 50)
+-- B. Bloque de Parkour (Plataforma de salto)
+local function createParkourBlock(levelFolder, levelIndex)
+	local block = Instance.new("Part")
+	block.Name = "ParkourBlock"
+	block.Size = Vector3.new(10, 0.5, 10)
+	block.Anchored = true
+	block.Material = Enum.Material.Plastic
 	
-	-- Luz de base
+	-- Estilizado básico por defecto (será sobreescrito por el sistema de biomas)
+	block.Color = Color3.fromRGB(200, 200, 200)
+
+	-- Highlight para visibilidad
+	local hl = Instance.new("Highlight")
+	hl.FillTransparency = 1
+	hl.OutlineTransparency = 0
+	hl.OutlineColor = Color3.new(1, 1, 1)
+	hl.Parent = block
+	
+	-- Sonido de Salto
+	local sfx = Instance.new("Sound")
+	sfx.Name = "JumpSound"
+	sfx.SoundId = "rbxassetid://12221967" -- Sonido "Pop" genérico
+	sfx.Parent = block
+
+	block.Parent = levelFolder
+	return block
+end
+
+-- C. Plataforma de Nivel (Isla segura)
+local function createLevelPlatform(levelFolder, levelIndex)
+	local plat = Instance.new("Part")
+	plat.Name = "LevelPlatform"
+	plat.Size = Vector3.new(40, 2, 40)
+	plat.Anchored = true
+	plat.Material = Enum.Material.SmoothPlastic
+	plat.Color = Color3.fromRGB(50, 50, 60)
+	
 	local light = Instance.new("PointLight")
-	light.Range = 40; light.Brightness = 1.5; light.Parent = platform
+	light.Range = 30
+	light.Brightness = 2
+	light.Parent = plat
 	
-	platform.Parent = parent
-	return platform
+	plat.Parent = levelFolder
+	return plat
 end
 
--- D. PREMIO (Gema)
-local function createMasterGem()
-	local gem = Instance.new("Part")
-	gem.Name = "MasterGem"
-	gem.Size = Vector3.new(1.5, 2.5, 1.5)
-	gem.Shape = Enum.PartType.Ball
-	gem.Material = Enum.Material.Neon
-	gem.Color = Color3.fromRGB(255, 255, 255)
-	gem.Anchored = true; gem.CanCollide = false
-	
-	CollectionService:AddTag(gem, "CollectionItem")
-	
-	local sound = Instance.new("Sound")
-	sound.Name = "GemSound"; sound.SoundId = "rbxassetid://1510219102"; sound.Parent = gem
-	
-	gem.Parent = templates -- Se queda en la raíz para acceso general
-end
-
--- 4. Distribución de Prefabs
-local function populateFolders()
-	-- Cargar assets externos primero
-	loadExternalAssets()
-
-	-- Llenar cada carpeta de nivel con lo necesario
-	for i = 1, LEVEL_COUNT do
-		local folder = levelFolders[i]
-		
-		-- 1. Starter Pad (Siempre necesario)
-		createStarterPad(folder)
-
-		-- 2. Parkour Block (Si no se cargó externo)
-		if not folder:FindFirstChild("ParkourBlock") then
-			createBaseBlock(folder)
-		end
-		
-		-- 3. Level Platform (Si no se cargó externo)
-		if not folder:FindFirstChild("LevelPlatform") then
-			createLevelPlatform(folder)
-		end
+--------------------------------------------------------------------------------
+-- 3. INTEGRACIÓN DE ASSETS EXTERNOS
+--------------------------------------------------------------------------------
+local function loadAssetsIntoFolders(folders)
+	local assetStorage = ReplicatedStorage:FindFirstChild("asset")
+	if not assetStorage then
+		warn("⚠️ PrefabFactory: Carpeta 'asset' no encontrada. Usando generadores por defecto.")
+		return
 	end
 	
-	-- Crear otros elementos globales en la raíz de Templates
-	createMasterGem()
+	-- Mapeo: Nombre en 'asset' -> Nombre destino, Nivel destino
+	local mappings = {
+		{ source = "plataforma1", target = "ParkourBlock", level = 1 },
+		{ source = "plataforma2", target = "ParkourBlock", level = 2 },
+		{ source = "plataforma3", target = "ParkourBlock", level = 3 },
+		{ source = "plataforma4", target = "ParkourBlock", level = 4 },
+		-- Añadir aquí otros assets personalizados
+	}
 	
-	-- Fallback para HexPlatform si no existe
-	if not templates:FindFirstChild("HexPlatform_V2") then
-		local hp = Instance.new("Part")
-		hp.Name = "HexPlatform_V2"
-		hp.Anchored = true
-		hp.Size = Vector3.new(10, 1, 10)
-		hp.Parent = templates
+	for _, map in ipairs(mappings) do
+		local sourceObj = assetStorage:FindFirstChild(map.source)
+		if sourceObj and folders[map.level] then
+			-- Eliminar el generado por defecto si existe para reemplazarlo
+			local existing = folders[map.level]:FindFirstChild(map.target)
+			if existing then existing:Destroy() end
+
+			local clone = sourceObj:Clone()
+			clone.Name = map.target
+			clone.Parent = folders[map.level]
+			print(string.format("   > Asset '%s' asignado a Nivel %d", map.source, map.level))
+		end
 	end
 end
 
--- Ejecución
-populateFolders()
+--------------------------------------------------------------------------------
+-- 4. EJECUCIÓN PRINCIPAL
+--------------------------------------------------------------------------------
+local templatesRoot, levelFolders = setupFolders()
 
--- Señal de Finalización
+-- Generar básicos para todos los niveles
+for i = 1, LEVEL_COUNT do
+	createStarterPad(levelFolders[i])
+	createParkourBlock(levelFolders[i], i)
+	createLevelPlatform(levelFolders[i], i)
+end
+
+-- Sobrescribir con assets artísticos si existen
+loadAssetsIntoFolders(levelFolders)
+
+-- Señal de finalización
 local readyVal = Instance.new("StringValue")
 readyVal.Name = "FactoryReady"
-readyVal.Value = "Ready"
-readyVal.Parent = templates
-templates:SetAttribute("PrefabReady", true)
+readyVal.Value = "True"
+readyVal.Parent = templatesRoot
 
-print("✅ PrefabFactory: Estructura de Niveles (1-"..LEVEL_COUNT..") Lista y Verificada.")
+print("✅ PrefabFactory: Sistema de Templates (1-"..LEVEL_COUNT..") listo para ParkourSystem.")
