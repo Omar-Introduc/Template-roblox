@@ -83,46 +83,80 @@ local GEMS_SETTINGS = {
 	["powerball"] = { Name = "Caos",      Color = "#aa00ff", RotSpeed = 0.02, HasShards = true }
 }
 
--- Función auxiliar para aplicar visuales y física estable
+-- Función auxiliar para aplicar visuales y física estable (Efecto Cristal con Brillo Visible)
 local function applyGemVisuals(model, colorHex)
 	local color = Color3.fromHex(colorHex)
 	for _, part in ipairs(model:GetDescendants()) do
-		if part:IsA("BasePart") then
+		if part:IsA("BasePart") and not part.Name:find("Glow") then
+			-- Carcasa de Cristal
 			part.Color = color
-			part.Material = Enum.Material.Neon
+			part.Material = Enum.Material.Glass
+			part.Transparency = 0.3
 			part.CastShadow = false
 			part.Anchored = true
 			part.CanCollide = false
 			part.CanTouch = false
 			part.Massless = true
+			
+			-- NÚCLEO DE BRILLO (Más visible ahora)
+			local glow = part:Clone()
+			glow.Name = "GlowCore_" .. part.Name
+			glow.Size = part.Size * 0.9 -- Ligeramente más pequeño
+			glow.Material = Enum.Material.Neon
+			glow.Transparency = 0.4 -- Reducido de 0.8 a 0.4 para mayor visibilidad
+			glow.Color = color
+			glow.Anchored = false
+			glow.Parent = part
+			glow.CFrame = part.CFrame
+			
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = part
+			weld.Part1 = glow
+			weld.Parent = glow
 		end
 	end
 	
-	-- Luz interna
+	-- Luz interna (Brillo Incrementado)
 	local lightBase = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
 	if lightBase then
 		local light = Instance.new("PointLight")
 		light.Color = color
-		light.Range = 10
-		light.Brightness = 1.2
+		light.Range = 8 -- Rango aumentado de 6 a 8
+		light.Brightness = 1.0 -- Aumentado de 0.3 a 1.0 para emisión real
 		light.Parent = lightBase
 	end
 end
 
--- Función para crear fragmentos orbitantes (Caos Shards)
+-- Función para crear fragmentos orbitantes (Cristal con Brillo Visible)
 local function createChaosShards(centerPart, colorHex)
 	local color = Color3.fromHex(colorHex)
 	local shards = {}
 	for i = 1, 8 do
 		local shard = Instance.new("Part")
-		shard.Name = "Shard_" .. i
+		shard.Name = "ShardShell_" .. i
 		shard.Size = Vector3.new(0.5, 0.5, 0.5)
 		shard.Color = color
-		shard.Material = Enum.Material.Neon
+		shard.Material = Enum.Material.Glass
+		shard.Transparency = 0.3
 		shard.Anchored = true
 		shard.CanCollide = false
 		shard.Parent = centerPart.Parent
 		
+		-- Núcleo de brillo para el shard (Más visible)
+		local glow = shard:Clone()
+		glow.Name = "ShardGlow_" .. i
+		glow.Size = shard.Size * 0.8
+		glow.Material = Enum.Material.Neon
+		glow.Transparency = 0.4 -- Reducido de 0.8 a 0.4
+		glow.Anchored = false
+		glow.Parent = shard
+		glow.CFrame = shard.CFrame
+		
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = shard
+		weld.Part1 = glow
+		weld.Parent = glow
+
 		local mesh = Instance.new("SpecialMesh")
 		mesh.MeshType = Enum.MeshType.Sphere 
 		mesh.Scale = Vector3.new(0.5, 1, 0.5)
@@ -133,9 +167,9 @@ local function createChaosShards(centerPart, colorHex)
 	return shards
 end
 
--- Función para instanciar y animar Efectos (Implementación Principal Restaurada)
+-- Función para instanciar y animar Efectos (Escala Reducida)
 local function createEffectInstances(centerPosition, lobbyIsland)
-	print("✨ Restaurando Lógica Principal de Blender...")
+	print("✨ Refinando Brillo y Órbita del Caos...")
 	local AssetFolder = ReplicatedStorage:WaitForChild("asset", 5)
 	if not AssetFolder then return end
 
@@ -144,7 +178,7 @@ local function createEffectInstances(centerPosition, lobbyIsland)
 
 	local effectsAssets = EffectsFolder:GetChildren()
 	local radius = 30
-	local scaleFactor = 3.5
+	local scaleFactor = 1.8 
 	
 	for i, template in ipairs(effectsAssets) do
 		local key = template.Name:lower()
@@ -168,50 +202,89 @@ local function createEffectInstances(centerPosition, lobbyIsland)
 			local initialCFrame = gemClone:GetPivot()
 			local initialRotation = initialCFrame.Rotation
 			
-			-- Animación según script de Blender
+			-- Animación según script de Blender (Ajustada a mitad de velocidad)
 			task.spawn(function()
 				local startTick = tick()
-				-- Blender's frame-based speed to rad/sec conversion
-				-- rot_speed in blender is per frame. Frames/sec = 60.
-				local rotSpeedSec = config.RotSpeed * 60 
+				local animSpeed = 0.5 
+				local rotSpeedSec = config.RotSpeed * 60 * animSpeed
 				
-				local shards = nil
-				if config.HasShards then
-					local core = gemClone.PrimaryPart or gemClone:FindFirstChildWhichIsA("BasePart")
-					if core then shards = createChaosShards(core, config.Color) end
+				-- Preparar componentes para Powerball
+				local isChaos = config.HasShards
+				local chaosComponents = {}
+				local mainPart = gemClone.PrimaryPart or gemClone:FindFirstChildWhichIsA("BasePart")
+				
+				if isChaos and gemClone:IsA("Model") then
+					for _, p in ipairs(gemClone:GetDescendants()) do
+						if p:IsA("BasePart") and not p.Name:find("Glow") then
+							local name = p.Name:lower()
+							if name:find("core") or name:find("ball") or name:find("sphere") then
+								mainPart = p
+								break
+							end
+							if not mainPart or p.Size.Magnitude > mainPart.Size.Magnitude then
+								mainPart = p
+							end
+						end
+					end
+					
+					for _, p in ipairs(gemClone:GetDescendants()) do
+						if p:IsA("BasePart") and p ~= mainPart and not p.Name:find("Glow") then
+							table.insert(chaosComponents, {
+								Part = p,
+								InitialRot = p.CFrame.Rotation,
+								AngleOffset = math.atan2(p.Position.Z - mainPart.Position.Z, p.Position.X - mainPart.Position.X)
+							})
+							p.Anchored = true 
+						end
+					end
+				end
+
+				-- Fragmentos extra procedimentales
+				local proceduralShards = nil
+				if isChaos and #chaosComponents == 0 then
+					if mainPart then proceduralShards = createChaosShards(mainPart, config.Color) end
 				end
 				
 				while gemClone and gemClone.Parent do
-					local deltaT = tick() - startTick
-					-- t = frame / 20. At 60fps, 1 sec = 60 frames. So frame = deltaT * 60.
-					-- t = (deltaT * 60) / 20 = deltaT * 3.
-					local t = deltaT * 3.0
+					local deltaT = (tick() - startTick)
+					local t = deltaT * 1.5 -- Velocidad base a la mitad
 					
-					-- 1. Flotación (Blender: += sin(t*1.5)*0.005)
-					-- To avoid cumulative error and match Roblox feel, we use absolute sine:
+					-- 1. Movimiento del Núcleo / Bola Principal
 					local floatY = math.sin(t * 1.5) * 1.5
+					local spin = CFrame.Angles(0, deltaT * rotSpeedSec, 0)
+					local currentPos = basePos + Vector3.new(0, floatY, 0)
 					
-					-- 2. Rotación Y (Blender: rotation_euler.z += rot_speed)
-					local currentRotY = deltaT * rotSpeedSec
-					local spin = CFrame.Angles(0, currentRotY, 0)
+					if mainPart then
+						mainPart.CFrame = CFrame.new(currentPos) * spin * initialRotation
+					end
 					
-					gemClone:PivotTo(CFrame.new(basePos + Vector3.new(0, floatY, 0)) * spin * initialRotation)
+					-- 2. Movimiento de Componentes Internos (Órbita Lenta)
+					local gemCenter = currentPos
 					
-					-- 3. Fragmentos del Caos
-					if shards then
-						for _, sData in ipairs(shards) do
-							-- Blender Shard Orbit Logic:
-							local shardAngle = t * 1.5 + sData.AngleOffset
-							local orbitRad = 8 -- Blender 1.8 * scaleFactor (~3.5) = 6.3. Using 8 for visual spacing.
+					-- Usamos una velocidad orbital MENOR (t * 0.5 en lugar de t * 1.5)
+					local orbitT = t * 0.5 
+
+					for i, comp in ipairs(chaosComponents) do
+						local sAngle = orbitT + comp.AngleOffset
+						local orbitRad = 8 
+						local offX = math.cos(sAngle) * orbitRad
+						local offZ = math.sin(sAngle) * orbitRad
+						local offY = math.sin(t * 2 + comp.AngleOffset) * 2
+						
+						local tumble = deltaT * 0.05 * 60 * animSpeed
+						comp.Part.CFrame = CFrame.new(gemCenter + Vector3.new(offX, offY, offZ)) 
+							* CFrame.Angles(tumble, tumble, 0) * comp.InitialRot
+					end
+					
+					if proceduralShards then
+						for _, sData in ipairs(proceduralShards) do
+							local sAngle = orbitT + sData.AngleOffset
+							local orbitRad = 8
+							local offX = math.cos(sAngle) * orbitRad
+							local offZ = math.sin(sAngle) * orbitRad
+							local offY = math.sin(t * 2 + sData.AngleOffset) * 2
 							
-							local offX = math.cos(shardAngle) * orbitRad
-							local offZ = math.sin(shardAngle) * orbitRad
-							local offY = math.sin(t * 2 + sData.AngleOffset) * 2 -- Blender 0.4 * scaleFactor = 1.4
-							
-							local gemCenter = gemClone:GetPivot().Position
-							
-							-- Tumbling (Blender: rotation_euler += 0.05 per frame)
-							local tumble = deltaT * 0.05 * 60
+							local tumble = deltaT * 0.05 * 60 * animSpeed
 							sData.Part.CFrame = CFrame.new(gemCenter + Vector3.new(offX, offY, offZ)) 
 								* CFrame.Angles(tumble, tumble, 0)
 						end
@@ -220,7 +293,7 @@ local function createEffectInstances(centerPosition, lobbyIsland)
 					task.wait()
 				end
 				
-				if shards then for _, s in ipairs(shards) do s.Part:Destroy() end end
+				if proceduralShards then for _, s in ipairs(proceduralShards) do s.Part:Destroy() end end
 			end)
 			
 			print("💎 Gema " .. config.Name .. " restaurada (Look Blender).")
@@ -228,19 +301,41 @@ local function createEffectInstances(centerPosition, lobbyIsland)
 	end
 end
 
--- Función para crear el Lobby con seguridad
+-- Función para auditar y limpiar materiales/luces (Solo Gemas y Plataforma emiten luz)
+local function auditLobbyAsset(instance)
+	for _, desc in ipairs(instance:GetDescendants()) do
+		-- 1. Eliminar luces perdidas
+		if desc:IsA("Light") then
+			desc:Destroy()
+		end
+		
+		-- 2. Forzar materiales no emisores
+		if desc:IsA("BasePart") then
+			if desc.Material == Enum.Material.Neon then
+				desc.Material = Enum.Material.SmoothPlastic
+			end
+			-- Opcional: Asegurar que no haya Reflectance excesivo que simule emisión
+			if desc.Reflectance > 0.5 then
+				desc.Reflectance = 0.1
+			end
+		end
+	end
+end
+
+-- Función para crear el Lobby con seguridad (Auditoría de Iluminación Aplicada)
 local function createLobbyIsland()
+	print("🛡️ Iniciando Auditoría de Iluminación del Lobby...")
 	-- 1. Crear el suelo de la isla
 	local lobbyIsland = Instance.new("Part")
 	lobbyIsland.Name = "Lobby"
 	lobbyIsland.Size = Vector3.new(LOBBY_SIZE, 2, LOBBY_SIZE)
-	lobbyIsland.Position = Vector3.new(0, 0, 0) -- Top surface at Y=1 (thickness 2)
+	lobbyIsland.Position = Vector3.new(0, 0, 0)
 	lobbyIsland.Anchored = true
 	lobbyIsland.BrickColor = BrickColor.new("Dark stone grey")
 	lobbyIsland.Material = Enum.Material.SmoothPlastic
 	lobbyIsland.Parent = Workspace
 
-	-- 2. Crear paredes alrededor (para que sea seguro)
+	-- 2. Crear paredes
 	local halfSize = LOBBY_SIZE / 2
 	local wallThick = 1
 	createWall(Vector3.new(0, WALL_HEIGHT/2, -halfSize), Vector3.new(LOBBY_SIZE, WALL_HEIGHT, wallThick), lobbyIsland)
@@ -257,20 +352,32 @@ local function createLobbyIsland()
 	spawnLocation.Transparency = 1 
 	spawnLocation.Parent = Workspace
 	
-	print("🎯 Spawn del Lobby arreglado definitivamente.")
+	-- 4. Decoración y Assets (Con Auditoría Individual)
+	local tree1Pos = Vector3.new(20, 1.2, 20)
+	createCherryTree(tree1Pos, lobbyIsland)
+	
+	local tree2Pos = Vector3.new(-20, 1.2, -20)
+	createCherryTree(tree2Pos, lobbyIsland)
+	
+	-- Auditamos árboles tras crearlos
+	for _, item in ipairs(lobbyIsland:GetChildren()) do
+		if item.Name == "MasterSakuraTree" then auditLobbyAsset(item) end
+	end
 
-	-- 4. Decoración y Assets
-	createCherryTree(Vector3.new(20, 1.2, 20), lobbyIsland)
-	createCherryTree(Vector3.new(-20, 1.2, -20), lobbyIsland)
+	-- Plataforma Hexagonal (EXCEPCIÓN: Sí emite luz)
 	createHexPlatform(Vector3.new(-15, 0.2, 15), lobbyIsland) 
 	
-	-- 5. Añadir Carro (Punto principal)
+	-- Carro (Auditoría aplicada tras instanciar)
 	createCarInstance(Vector3.new(10, 0.2, -10), lobbyIsland)
+	task.defer(function()
+		local car = Workspace:FindFirstChild("CarroLobby_Antigravity")
+		if car then auditLobbyAsset(car) end
+	end)
 
-	-- 6. Añadir Efectos 3D Animados (Cilindro, Rubi, Zafiro, etc.)
+	-- 5. Efectos 3D Animados (EXCEPCIÓN: Son la fuente principal de luz)
 	createEffectInstances(Vector3.new(0, 0, 0), lobbyIsland)
 
-	print("✅ Lobby Island completo con Efectos Animados.")
+	print("✅ Lobby Island consolidado. Solo Gemas y Plataforma emiten luz.")
 end
 
 -- Función para crear el Océano Mortal
