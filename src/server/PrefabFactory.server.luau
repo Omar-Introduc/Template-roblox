@@ -16,7 +16,31 @@ else
 	print("🏭 PrefabFactory: Created new Templates folder in ReplicatedStorage.")
 end
 
--- 2. Factory functions for Master Prefabs
+-- 2. External Assets Integration (ROJO Sync)
+local function loadExternalAssets()
+	local assetFolder = ReplicatedStorage:WaitForChild("asset", 10)
+	if not assetFolder then
+		warn("⚠️ PrefabFactory: 'asset' folder not found in ReplicatedStorage. External platforms skipped.")
+		return
+	end
+
+	local function setupPlatformTemplate(assetName, templateName)
+		local source = assetFolder:FindFirstChild(assetName)
+		if source then
+			local clone = source:Clone()
+			clone.Name = templateName
+			clone.Parent = templates
+			print("✅ PrefabFactory: Loaded external template: " .. templateName)
+		else
+			warn("⚠️ PrefabFactory: Asset '" .. assetName .. "' not found. Using procedural fallback.")
+		end
+	end
+
+	setupPlatformTemplate("plataforma1", "Level1Block")
+	setupPlatformTemplate("plataforma2", "Level2Block")
+end
+
+-- 3. Factory functions for Master Prefabs
 local function createMasterBlock()
 	local block = Instance.new("Part")
 	block.Name = "MasterBlock"
@@ -178,6 +202,38 @@ local function createMasterGem()
 	gemSound.Parent = gem
 
 	gem.Parent = templates
+end
+
+local function createHexPlatformFallback()
+	if templates:FindFirstChild("HexPlatform_V2") then return end
+	
+	print("⚠️ PrefabFactory: Creating Procedural HexPlatform_V2 (Asset missing)")
+	local model = Instance.new("Model")
+	model.Name = "HexPlatform_V2"
+	
+	local part = Instance.new("Part")
+	part.Name = "Base"
+	part.Shape = Enum.PartType.Cylinder
+	part.Size = Vector3.new(1, 15, 15) -- Cylinder is sideways
+	part.Rotation = Vector3.new(0, 0, 90)
+	part.Color = Color3.fromHex("#ffffff")
+	part.Material = Enum.Material.Glass
+	part.Anchored = true
+	part.Parent = model
+	
+	-- Neon Rim
+	local rim = Instance.new("Part")
+	rim.Name = "Rim"
+	rim.Shape = Enum.PartType.Cylinder
+	rim.Size = Vector3.new(1.1, 15.5, 15.5)
+	rim.Rotation = Vector3.new(0, 0, 90)
+	rim.Color = Color3.fromHex("#00ffff")
+	rim.Material = Enum.Material.Neon
+	rim.Anchored = true
+	rim.Parent = model
+	
+	model.PrimaryPart = part
+	model.Parent = templates
 end
 
 local function createPhysicalShopSign()
@@ -382,6 +438,8 @@ createMasterPlatform()
 createMasterPad()
 createMasterGem()
 createPhysicalShopSign()
+loadExternalAssets()
+createHexPlatformFallback() -- Critical fallback
 
 local readyVal = Instance.new("StringValue")
 readyVal.Name = "FactoryReady"

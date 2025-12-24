@@ -242,10 +242,42 @@ setupChristmasAtmosphere()
 local function createCountdown(block, duration)
 	block:SetAttribute("RemainingTime", duration)
 
+	-- Inject TimerGui if missing (Critical for custom assets)
+	if not block:FindFirstChild("TimerGui") then
+		local master = Templates:FindFirstChild("MasterBlock")
+		local masterGui = master and master:FindFirstChild("TimerGui")
+		
+		if masterGui then
+			local clone = masterGui:Clone()
+			clone.Parent = block
+		else
+			-- Fallback procedural creation
+			local sg = Instance.new("SurfaceGui")
+			sg.Name = "TimerGui"
+			sg.Face = Enum.NormalId.Top
+			local tl = Instance.new("TextLabel")
+			tl.Name = "TimerLabel"
+			tl.Size = UDim2.fromScale(1,1); tl.BackgroundTransparency=1
+			tl.TextScaled=true; tl.TextColor3=Color3.new(1,1,1)
+			tl.Parent = sg
+			sg.Parent = block
+		end
+	end
+
+	-- Visual Update Loop
 	task.spawn(function()
+		local gui = block:FindFirstChild("TimerGui")
+		local label = gui and gui:FindFirstChild("TimerLabel")
+
 		while true do
 			local remaining = block:GetAttribute("RemainingTime") or 0
 			if remaining <= 0 or not block.Parent then break end
+			
+			if label then
+				label.Text = string.format("%.1f", remaining)
+				if remaining < 2 then label.TextColor3 = Color3.new(1,0,0) end
+			end
+
 			task.wait(0.1)
 			block:SetAttribute("RemainingTime", remaining - 0.1)
 		end
@@ -366,9 +398,17 @@ spawnNextBlock = function(player, levelIndex, originOverride)
 		-- so the player has a way to continue the path.
 		return spawnNextBlock(player, levelIndex, bomb)
 	else
-		block = folder.MasterBlock:Clone()
+		-- 6a. Select Platform Type based on Level
+		local platformTemplate = folder.MasterBlock
+		if levelIndex == 1 and folder:FindFirstChild("Level1Block") then
+			platformTemplate = folder.Level1Block
+		elseif levelIndex == 2 and folder:FindFirstChild("Level2Block") then
+			platformTemplate = folder.Level2Block
+		end
+
+		block = platformTemplate:Clone()
 		block.Name = "Path_" .. player.Name
-		block.Position = finalPos
+		block:PivotTo(CFrame.new(finalPos))
 		block.Parent = Workspace
 		
 		if willMove then
@@ -629,10 +669,43 @@ end
 --------------------------------------------------------------------------------
 
 local function createStarterPads()
-	-- Wait for the Lobby to be created by lobby.server.luau
-	local lobbyPart = Workspace:WaitForChild("Lobby", 10)
-	if not lobbyPart then
-		warn("⚠️ Lobby not found! Make sure lobby.server.luau is running.")
+	print("🔍 [DIAGNÓSTICO] Esperando señal 'LobbyReady' del entorno...")
+	
+	-- 1. Esperar señal de sincronización (Máx 10s)
+	local startTime = tick()
+	while not Workspace:GetAttribute("LobbyReady") do
+		if tick() - startTime > 10 then
+			warn("⚠️ [TIMEOUT] LobbyReady no recibido en 10s. Procediendo con búsqueda manual...")
+			break
+		end
+		task.wait(0.5)
+	end
+	print("✅ [DIAGNÓSTICO] Señal recibida o timeout superado. Buscando plataformas...")
+
+	-- 2. Búsqueda con logs detallados
+	local hexPlatform = Workspace:FindFirstChild("HexPlatform_V2")
+	local lobbyPart = Workspace:FindFirstChild("Lobby")
+	
+	if hexPlatform then
+		print("   > HexPlatform_V2 encontrada! | Clase: " .. hexPlatform.ClassName .. " | Pos: " .. tostring(hexPlatform:GetPivot().Position))
+		-- Visual Debug: Resaltar la plataforma encontrada
+		local h = Instance.new("Highlight")
+		h.Name = "DebugHighlight_Start"
+		h.FillColor = Color3.new(0,1,0) -- Verde = Éxito
+		h.OutlineColor = Color3.new(1,1,1)
+		h.Adornee = hexPlatform
+		h.Parent = hexPlatform
+		game:GetService("Debris"):AddItem(h, 5) -- Quitar a los 5s
+	else
+		warn("   > HexPlatform_V2 NO encontrada en Workspace.")
+	end
+
+	if lobbyPart then
+		print("   > Lobby Floor encontrado. (Backup)")
+	end
+
+	if not lobbyPart and not hexPlatform then
+		warn("❌ [CRITICAL ERROR] No existe suelo ni plataforma. El parkour no puede iniciar.")
 		return
 	end
 
@@ -646,15 +719,22 @@ local function createStarterPads()
 		
 		applyBiome(pad, biome)
 
-		local distFromCenter = (sourcePart.Size.X / 2) - 4
-		local surfaceY = sourcePart.Position.Y + (sourcePart.Size.Y / 2) + 0.6 -- Elevated to avoid Z-fighting
+		-- Handle both Parts and Models for sourcePart
+		local sourceSize = (sourcePart:IsA("Model") and sourcePart:GetExtentsSize()) or sourcePart.Size
+		local sourcePos = (sourcePart:IsA("Model") and sourcePart:GetPivot().Position) or sourcePart.Position
+
+		local distFromCenter = (sourceSize.X / 2) -- Center of pad exactly on the edge
+		local surfaceY = sourcePos.Y + (sourceSize.Y / 2) + 0.8 -- Slightly higher to be safe
 		
-		local dir = (targetPos - sourcePart.Position).Unit
-		pad.Position = sourcePart.Position + (dir * distFromCenter)
-		pad.Position = Vector3.new(pad.Position.X, surfaceY, pad.Position.Z)
+		local dir = (targetPos - sourcePos).Unit
+		local finalPos = sourcePos + (dir * distFromCenter)
+		finalPos = Vector3.new(finalPos.X, surfaceY, finalPos.Z)
 		
-		pad.CFrame = CFrame.lookAt(pad.Position, Vector3.new(targetPos.X, pad.Position.Y, targetPos.Z))
+		pad.Position = finalPos
+		pad.CFrame = CFrame.lookAt(finalPos, Vector3.new(targetPos.X, finalPos.Y, targetPos.Z))
 		pad.Parent = Workspace
+		
+		print("📍 [DEBUG] StarterPad Level "..targetLevelIndex.." spawned at: "..tostring(finalPos))
 
 		local activeDebounces = {}
 		pad.Touched:Connect(function(hit)
@@ -670,12 +750,14 @@ local function createStarterPads()
 						checkpoint = Instance.new("SpawnLocation")
 						checkpoint.Name = "CheckpointSpawn"
 						checkpoint.Size = Vector3.new(1, 1, 1)
-						checkpoint.Position = sourcePart.Position + Vector3.new(0, 15, 0) -- High up, invisible
+						-- Fix: Use GetPivot() for Models
+						local sPos = (sourcePart:IsA("Model") and sourcePart:GetPivot().Position) or sourcePart.Position
+						checkpoint.Position = sPos + Vector3.new(0, 15, 0) -- High up, invisible
 						checkpoint.Transparency = 1
 						checkpoint.CanCollide = false
-						checkpoint.CanTouch = false -- No necesita detectar toques una vez creado
+						checkpoint.CanTouch = false 
 						checkpoint.Enabled = true
-						checkpoint.Duration = 0 -- Sin escudo de protección
+						checkpoint.Duration = 0 
 						
 						local decal = checkpoint:FindFirstChildOfClass("Decal")
 						if decal then decal:Destroy() end
@@ -692,8 +774,9 @@ local function createStarterPads()
 		end)
 	end
 
-	-- 1. Lobby -> Level 1
-	makePad(lobbyPart, 0)
+	-- 1. Lobby -> Level 1 (Prioritize the specific Platform model if it exists)
+	local startAnchor = hexPlatform or lobbyPart
+	makePad(startAnchor, 0)
 	
 	-- 2. Level i -> Level i+1
 	for i = 1, #LEVEL_CONFIGS - 1 do

@@ -160,7 +160,7 @@ local function createLinearLobby()
 	
 	-- Suelo
 	local floor = Instance.new("Part")
-	floor.Name = "LobbyFloor"
+	floor.Name = "Lobby"
 	floor.Size = Vector3.new(LOBBY_WIDTH, 2, LOBBY_DEPTH)
 	floor.Position = Vector3.new(0, 0, 0)
 	floor.Anchored = true
@@ -193,10 +193,20 @@ local function createLinearLobby()
 			local t2 = tree1:Clone(); t2:PivotTo(CFrame.new(100, 1.2, -20)); t2.Parent = floor
 		end
 		
-		-- Plataforma
-		local platform = Templates:WaitForChild("HexPlatform_V2", 3)
+		-- Plataforma de Salto (Derecha - Inicio de Juego)
+		local TemplatesFolder = ReplicatedStorage:WaitForChild("Templates", 5)
+		local platform = TemplatesFolder and TemplatesFolder:FindFirstChild("HexPlatform_V2")
+		if not platform then
+			-- Fallback if Templates fails
+			local Tmp = ReplicatedStorage:WaitForChild("Templates", 2)
+			platform = Tmp and Tmp:WaitForChild("HexPlatform_V2", 5)
+		end
+
 		if platform then
-			local p = platform:Clone(); p:PivotTo(CFrame.new(50, 0.2, -20)); p.Parent = floor
+			local p = platform:Clone()
+			p.Name = "HexPlatform_V2" -- Nombre crítico para ParkourSystem
+			p:PivotTo(CFrame.new(Vector3.new(50, 1.2, -20)))
+			p.Parent = Workspace -- Mover al Workspace para que Touched funcione bien
 		end
 	end
 
