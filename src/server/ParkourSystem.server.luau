@@ -39,21 +39,21 @@ local BIOME_CONFIG = {
 	},
 	[2] = {
 		Name = "Christmas 2",
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.SmoothPlastic, -- Anti-Glare Standard
 		Color = Color3.fromRGB(200, 0, 0), -- Festive Red
 		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 255, 0)),
 		Texture = "rbxassetid://585426142"
 	},
 	[3] = {
 		Name = "Christmas 3",
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.SmoothPlastic, -- Anti-Glare Standard
 		Color = Color3.fromRGB(0, 200, 0), -- Festive Green
 		ParticleColor = ColorSequence.new(Color3.fromRGB(255, 255, 255)),
 		Texture = "rbxassetid://244221440"
 	},
 	[4] = {
 		Name = "Christmas 4",
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.SmoothPlastic, -- Anti-Glare Standard
 		Color = Color3.fromRGB(255, 255, 255), -- Snow White
 		ParticleColor = ColorSequence.new(Color3.fromRGB(200, 200, 255)),
 		Texture = "rbxassetid://585426142"

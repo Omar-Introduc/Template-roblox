@@ -10,11 +10,12 @@ local _ROTATION_SPEED = 0.5 -- Rads per second
 
 -- Light Server Logic: Only handles Position & State
 -- Static Position (Guardian of the Lobby)
-local STATIC_POS = Vector3.new(0, 8, -15)
+-- Static Position (Guardian of the Lobby) - Moved back to avoid obstruction
+local STATIC_POS = Vector3.new(0, 10, -28)
 
 local function setStaticPosition(model)
-	-- Face center
-	local lookAt = Vector3.new(0, 8, 0)
+	-- Face center spawn
+	local lookAt = Vector3.new(0, 1.5, 0)
 	model:PivotTo(CFrame.lookAt(STATIC_POS, lookAt))
 end
 

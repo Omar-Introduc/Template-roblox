@@ -2,19 +2,19 @@
   "name": "Template-roblox",
   "tree": {
     "$className": "DataModel",
-
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/shared"
+      },
+      "asset": {
+        "$path": "src/assets"
       }
     },
-
     "ServerScriptService": {
       "Server": {
         "$path": "src/server"
       }
     },
-
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "Client": {
@@ -22,7 +22,6 @@
         }
       }
     },
-
     "Workspace": {
       "$properties": {
         "FilteringEnabled": true
