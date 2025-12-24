@@ -67,10 +67,12 @@ print("------------------------------------------------")
 local templates = ReplicatedStorage:WaitForChild("Templates", 5)
 if templates and templates:GetAttribute("PrefabReady") then
 	print("✅ PrefabFactory initialized correctly.")
-	if templates:FindFirstChild("MasterBlock") then
-		print("✅ MasterBlock template found.")
+	-- Note: Blocks are organized in LevelX folders now
+	local lvl1 = templates:FindFirstChild("Level1")
+	if lvl1 and lvl1:FindFirstChild("ParkourBlock") then
+		print("✅ ParkourBlock template found (Level 1).")
 	else
-		warn("❌ MasterBlock template MISSING.")
+		warn("❌ ParkourBlock template MISSING in Level 1.")
 	end
 else
 	warn("❌ PrefabFactory not ready or timed out.")

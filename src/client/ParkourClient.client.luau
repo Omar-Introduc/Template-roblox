@@ -56,8 +56,13 @@ local function setupBlockVFX(block)
 
 	-- 2. Local Timer Loop
 	task.spawn(function()
+		local lifeTime = block:GetAttribute("LifeTime") or 5
+		local creationTime = block:GetAttribute("CreationTime") or workspace:GetServerTimeNow()
+
 		while block:IsDescendantOf(game) do
-			local remaining = block:GetAttribute("RemainingTime") or 0
+			local elapsed = workspace:GetServerTimeNow() - creationTime
+			local remaining = math.max(0, lifeTime - elapsed)
+
 			if remaining <= 0 then 
 				label.Visible = false
 				break 
