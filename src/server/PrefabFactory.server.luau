@@ -110,6 +110,28 @@ local function createStarterPad(levelFolder)
 	return pad
 end
 
+-- A.1. Cristal Coleccionable
+local function createCrystal(levelFolder)
+	if levelFolder:FindFirstChild("Crystal") then return end
+
+	local crystal = Instance.new("Part")
+	crystal.Name = "Crystal"
+	crystal.Size = Vector3.new(3, 5, 3) -- Un poco más alto
+	crystal.Shape = Enum.PartType.Ball -- Usamos bola para simular cristal flotante simple
+	crystal.Material = Enum.Material.Neon
+	crystal.Color = Color3.fromRGB(0, 255, 255) -- Cyan (Default Crystal Color)
+	crystal.Anchored = true
+	crystal.CanCollide = false -- Coleccionable
+
+	-- Posición relativa default (se ajustará al ser colocado en el nivel real)
+	crystal.Position = Vector3.new(0, 5, 0)
+
+	CollectionService:AddTag(crystal, "Crystal")
+
+	crystal.Parent = levelFolder
+	return crystal
+end
+
 -- B. Bloque de Parkour (Plataforma de salto)
 local function createParkourBlock(levelFolder, levelIndex)
 	if levelFolder:FindFirstChild("ParkourBlock") then return end
@@ -228,6 +250,7 @@ local templatesRoot, levelFolders = setupFolders()
 -- Generar básicos para todos los niveles
 for i = 1, LEVEL_COUNT do
 	createStarterPad(levelFolders[i])
+	createCrystal(levelFolders[i])
 	createParkourBlock(levelFolders[i], i)
 	createLevelPlatform(levelFolders[i], i)
 end

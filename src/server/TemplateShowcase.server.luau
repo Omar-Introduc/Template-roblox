@@ -87,6 +87,17 @@ local function getObjectSize(obj)
     return Vector3.new(5, 5, 5) -- Default fallback
 end
 
+local function generateID(index)
+    local letterIndex = math.floor((index - 1) / 99) + 1
+    local number = (index - 1) % 99 + 1
+    local letter = string.char(64 + letterIndex)
+
+    -- Limit to 3 chars: [Letter][Number] or [Letter][Number][Number]
+    -- Example: A1, A9, A10, A99
+
+    return letter .. number
+end
+
 local function runShowcase()
     print("⏳ Esperando a PrefabFactory...")
 
@@ -145,7 +156,7 @@ local function runShowcase()
 
     print("✨ Mostrando " .. #uniqueItems .. " objetos únicos.")
 
-    for _, entry in ipairs(uniqueItems) do
+    for index, entry in ipairs(uniqueItems) do
         local original = entry.obj
         local clone = original:Clone()
         clone.Name = "Showcase_" .. original.Name
@@ -171,7 +182,11 @@ local function runShowcase()
             levelStr = "Levels: " .. entry.levels[1] .. "..." .. entry.levels[#entry.levels] .. " (" .. #entry.levels .. " total)"
         end
 
-        createNameTag(clone, original.Name .. "\n" .. levelStr)
+        -- Generar ID único corto (A1, A2...)
+        local shortID = generateID(index)
+
+        -- Mostrar principalmente el ID como se solicitó
+        createNameTag(clone, shortID)
 
         -- Avanzar cursor
         currentX = currentX + size.X + ROW_SPACING_GAP
