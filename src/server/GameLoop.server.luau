@@ -118,7 +118,7 @@ local function generateLevel()
 		if realLobby then
 			lobby = realLobby:Clone()
 			lobby.Name = "Lobby"
-			lobby:PivotTo(CFrame.new(0, CONFIG.START_HEIGHT, 0))
+			-- lobby:PivotTo(CFrame.new(0, CONFIG.START_HEIGHT, 0)) -- Removed to respect saved asset position
 			lobby.Parent = workspace
 		end
 	else
