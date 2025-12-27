@@ -1,54 +1,53 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Debris = game:GetService("Debris")
 
--- 1. Constants and Settings
-local ASSET_PATH = "juego1"
-local MAX_PLATFORMS = 50
-local START_HEIGHT = 10
-local BASE_GAP = 4
-local GAP_INCREMENT = 0.5
-local INCREMENT_STEP = 5
+-- 1. Configuration Settings
+local CONFIG = {
+	ASSET_PATH = "juego1",
+	MAX_PLATFORMS = 50,
+	START_HEIGHT = 10,  -- Default if no Lobby exists
+	BASE_GAP = 4,
+	GAP_INCREMENT = 0.5,
+	INCREMENT_STEP = 5,
+}
 
 local THEME_COLORS = {
-	Concrete = Color3.fromHex("#444444"), -- Gris Oscuro
-	Basalt = Color3.fromHex("#2a2a2a"), -- Casi Negro
-	Wood = Color3.fromHex("#5D4037"), -- Marrón
-	Fabric = Color3.fromHex("#D7CCC8"), -- Fondo Cartel
-	Plastic = Color3.fromHex("#3E2723"), -- Borde Cartel
+	Concrete = Color3.fromHex("#444444"),
+	Basalt = Color3.fromHex("#2a2a2a"),
+	Wood = Color3.fromHex("#5D4037"),
+	Fabric = Color3.fromHex("#D7CCC8"),
+	Plastic = Color3.fromHex("#3E2723"),
 	Black = Color3.new(0, 0, 0)
 }
 
 -- 2. Wait for Assets
 local assetFolder = ReplicatedStorage:WaitForChild("asset", 10)
-if not assetFolder then
-	warn("CRITICAL: 'asset' folder not found in ReplicatedStorage.")
-	return
-end
+local gameAssets = assetFolder and assetFolder:WaitForChild(CONFIG.ASSET_PATH, 10)
 
-local gameAssets = assetFolder:WaitForChild(ASSET_PATH, 10)
 if not gameAssets then
-	warn("CRITICAL: 'juego1' folder not found in ReplicatedStorage.asset.")
+	warn("CRITICAL: Assets not found in ReplicatedStorage.asset." .. CONFIG.ASSET_PATH)
 	return
 end
-
-local lobbyTemplate = gameAssets:WaitForChild("Lobby", 10)
-local platformTemplate = gameAssets:WaitForChild("Plataforma_Level1", 10)
 
 -- 3. Helper Functions
+local function findAsset(parent, name)
+	local found = parent:FindFirstChild(name)
+	if found then return found end
+	for _, child in ipairs(parent:GetChildren()) do
+		if child:IsA("Folder") or child:IsA("Model") then
+			found = findAsset(child, name)
+			if found then return found end
+		end
+	end
+	return nil
+end
 
--- Helper to apply theme based on part names
 local function applyTheme(model, difficultyIndex)
 	for _, part in ipairs(model:GetDescendants()) do
 		if part:IsA("BasePart") then
-			-- Physics Setup
 			part.Anchored = true
-			pcall(function()
-				part.CollisionFidelity = Enum.CollisionFidelity.PreciseConvexDecomposition
-			end)
-
+			pcall(function() part.CollisionFidelity = Enum.CollisionFidelity.PreciseConvexDecomposition end)
+			
 			local name = part.Name
-
-			-- Material and Color Logic
 			if name:match("Suelo") or name:match("Piso") or name:match("Base") then
 				part.Material = Enum.Material.Concrete
 				part.Color = THEME_COLORS.Concrete
@@ -67,25 +66,12 @@ local function applyTheme(model, difficultyIndex)
 			elseif name:match("PlataformaPrincipal") then
 				part.Material = Enum.Material.Neon
 				if difficultyIndex then
-					-- Green (0.33) -> Red (0.0)
-					local progress = math.clamp((difficultyIndex - 1) / (MAX_PLATFORMS - 1), 0, 1)
-					local hue = 0.33 * (1 - progress)
-					part.Color = Color3.fromHSV(hue, 1, 1)
+					local progress = math.clamp((difficultyIndex - 1) / (CONFIG.MAX_PLATFORMS - 1), 0, 1)
+					part.Color = Color3.fromHSV(0.33 * (1 - progress), 1, 1)
 				end
 			end
 		end
 	end
-end
-
--- Helper to get model size (Z axis)
-local function getModelSizeZ(model)
-	if model:IsA("Model") then
-		local _, size = model:GetBoundingBox()
-		return size.Z
-	elseif model:IsA("BasePart") then
-		return model.Size.Z
-	end
-	return 0
 end
 
 local function createCountdown(parent)
@@ -93,7 +79,6 @@ local function createCountdown(parent)
 	bb.Size = UDim2.new(0, 100, 0, 100)
 	bb.StudsOffset = Vector3.new(0, 5, 0)
 	bb.AlwaysOnTop = true
-
 	local text = Instance.new("TextLabel")
 	text.Size = UDim2.new(1, 0, 1, 0)
 	text.BackgroundTransparency = 1
@@ -102,112 +87,138 @@ local function createCountdown(parent)
 	text.Font = Enum.Font.FredokaOne
 	text.TextScaled = true
 	text.Parent = bb
-
 	bb.Parent = parent
 	return bb, text
 end
 
-local function spawnPlatform(index, cframe, sizeZ)
-	local model = platformTemplate:Clone()
-	model.Name = "Plataforma_" .. index
+local function spawnPlatform(index, cframe, template, parent)
+	local model = template:Clone()
+	model.Name = "Salto_" .. index
 	model:PivotTo(cframe)
-	model.Parent = workspace
-
+	model.Parent = parent
 	applyTheme(model, index)
 
-	-- Gameplay Logic
-	local triggered = false
-
-	-- Identify the main interaction part
 	local mainPart = nil
 	for _, p in ipairs(model:GetDescendants()) do
-		if p:IsA("BasePart") and p.Name:match("PlataformaPrincipal") then
-			mainPart = p
-			break
+		if p:IsA("BasePart") and p.Name:match("PlataformaPrincipal") then 
+			mainPart = p 
+			break 
 		end
 	end
-	-- Fallback
-	if not mainPart then
-		mainPart = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-	end
-
-	local function onTouched(hit)
-		if triggered then return end
-		if hit.Parent and hit.Parent:FindFirstChild("Humanoid") then
-			triggered = true
-
-			-- Countdown
-			local bb, textLabel = createCountdown(mainPart)
-			for i = 3, 1, -1 do
-				textLabel.Text = tostring(i)
-				task.wait(1)
-			end
-			bb:Destroy()
-
-			-- Fall
-			for _, p in ipairs(model:GetDescendants()) do
-				if p:IsA("BasePart") then
-					p.Color = THEME_COLORS.Black
-					p.Anchored = false
-					p.CanCollide = false
-				end
-			end
-
-			-- Destroy after 2s
-			task.delay(2, function()
-				if model then model:Destroy() end
-			end)
-
-			-- Respawn after 5s (from fall start)
-			task.delay(5, function()
-				spawnPlatform(index, cframe, sizeZ)
-			end)
-		end
+	if not mainPart then 
+		mainPart = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true) 
 	end
 
 	if mainPart then
-		mainPart.Touched:Connect(onTouched)
+		local triggered = false
+		mainPart.Touched:Connect(function(hit)
+			if triggered then return end
+			if hit.Parent and hit.Parent:FindFirstChild("Humanoid") then
+				triggered = true
+				local bb, textLabel = createCountdown(mainPart)
+				for i = 3, 1, -1 do
+					textLabel.Text = tostring(i)
+					task.wait(1)
+				end
+				bb:Destroy()
+				for _, p in ipairs(model:GetDescendants()) do
+					if p:IsA("BasePart") then
+						p.Color = THEME_COLORS.Black
+						p.Anchored = false
+						p.CanCollide = false
+					end
+				end
+				task.delay(2, function() 
+					if model then model:Destroy() end 
+				end)
+				task.delay(5, function() 
+					spawnPlatform(index, cframe, template, parent) 
+				end)
+			end
+		end)
 	end
 end
 
 -- 4. Main Level Generation
 local function generateLevel()
-	-- Clean workspace
-	for _, child in ipairs(workspace:GetChildren()) do
-		if child.Name == "Lobby" or child.Name:match("Plataforma_") then
-			child:Destroy()
+	print("🚀 Iniciando generación de nivel...")
+	
+	-- Cleanup Level (but keep the Lobby if it's there)
+	local existingLevel = workspace:FindFirstChild("Level_1")
+	if existingLevel then existingLevel:Destroy() end
+
+	local levelContainer = Instance.new("Folder")
+	levelContainer.Name = "Level_1"
+	levelContainer.Parent = workspace
+
+	-- Check if Lobby is already in Workspace (Established Position)
+	local lobby = workspace:FindFirstChild("Lobby")
+	local currentBaseHeight = CONFIG.START_HEIGHT
+
+	if not lobby then
+		local realLobby = findAsset(gameAssets, "Lobby")
+		if realLobby then
+			lobby = realLobby:Clone()
+			lobby.Name = "Lobby"
+			lobby:PivotTo(CFrame.new(0, CONFIG.START_HEIGHT, 0))
+			lobby.Parent = workspace
+			applyTheme(lobby, nil)
 		end
+	else
+		print("📦 Usando Lobby establecido en Workspace.")
+		currentBaseHeight = lobby:GetPivot().Position.Y
 	end
 
-	-- Spawn Lobby
-	local lobby = lobbyTemplate:Clone()
-	lobby.Name = "Lobby"
-	lobby:PivotTo(CFrame.new(0, START_HEIGHT, 0))
-	lobby.Parent = workspace
-	applyTheme(lobby, nil)
-
-	local lobbySizeZ = getModelSizeZ(lobby)
-
-	-- Calculate Start Position (Center of Lobby + Half Size = Edge)
-	-- Platforms go along +Z
-	local currentZ = (lobbySizeZ / 2)
-
-	local platformSizeZ = getModelSizeZ(platformTemplate)
-
-	for i = 1, MAX_PLATFORMS do
-		-- Gap Calculation
-		local gapMultiplier = math.floor((i - 1) / INCREMENT_STEP)
-		local currentGap = BASE_GAP + (gapMultiplier * GAP_INCREMENT)
-
-		-- Position: Previous Edge + Gap + Half Size
-		local centerZ = currentZ + currentGap + (platformSizeZ / 2)
-
-		local platformCFrame = CFrame.new(0, START_HEIGHT, centerZ) -- Fixed Rotation (0,0,0)
-		spawnPlatform(i, platformCFrame, platformSizeZ)
-
-		-- Update cursor to new edge
-		currentZ = centerZ + (platformSizeZ / 2)
+	local realPlatform = findAsset(gameAssets, "Plataforma_Level1")
+	if not (lobby and realPlatform) then
+		warn("❌ CRITICAL: No se pudo encontrar Lobby o Plataforma_Level1")
+		return
 	end
+
+	-- 🎯 Analyze Geometry
+	local struct1, struct2 = nil, nil
+	for _, p in ipairs(lobby:GetDescendants()) do
+		local n = p.Name:lower()
+		if n == "estructura1" then struct1 = p elseif n == "estructura2" then struct2 = p end
+	end
+	
+	local pathDirection = Vector3.new(0, 0, 1)
+	local startPoint = Vector3.new(0, currentBaseHeight, 0)
+	local rotationAnglePath = 0
+
+	if struct1 and struct2 then
+		startPoint = Vector3.new((struct1.Position.X + struct2.Position.X)/2, currentBaseHeight, (struct1.Position.Z + struct2.Position.Z)/2)
+		local widthVector = (struct2.Position - struct1.Position).Unit
+		pathDirection = widthVector:Cross(Vector3.new(0, 1, 0))
+		
+		-- Outward Sanity Check
+		local lobbyPos = lobby:GetPivot().Position
+		local outward = (startPoint - Vector3.new(lobbyPos.X, currentBaseHeight, lobbyPos.Z)).Unit
+		if pathDirection:Dot(outward) < 0 then pathDirection = -pathDirection end
+		
+		rotationAnglePath = math.atan2(pathDirection.X, pathDirection.Z)
+	end
+
+	-- 📐 Platform Settings
+	local _, platformOrigSize = realPlatform:GetBoundingBox()
+	local internalRotation = (platformOrigSize.X > platformOrigSize.Z) and 0 or math.rad(90)
+	local basePlatformRotation = rotationAnglePath + internalRotation
+	local finalDepth = math.min(platformOrigSize.X, platformOrigSize.Z)
+
+	-- 🏃 Spawn Platforms
+	local currentDistance = 0
+	for i = 1, CONFIG.MAX_PLATFORMS do
+		local currentGap = CONFIG.BASE_GAP + (math.floor((i - 1) / CONFIG.INCREMENT_STEP) * CONFIG.GAP_INCREMENT)
+		currentDistance += currentGap + (finalDepth / 2)
+		
+		local targetPos = startPoint + (pathDirection * currentDistance)
+		local platformCFrame = CFrame.new(targetPos) * CFrame.Angles(0, basePlatformRotation, 0)
+		
+		spawnPlatform(i, platformCFrame, realPlatform, levelContainer)
+		currentDistance += (finalDepth / 2)
+	end
+	
+	print("✨ Generación completada con éxito!")
 end
 
-generateLevel()
+task.spawn(generateLevel)
