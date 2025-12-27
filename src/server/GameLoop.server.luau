@@ -103,6 +103,32 @@ local function spawnNextPlatform(previousPlatform)
     return newPlatform
 end
 
+-- Helper: Spawn Shop Board
+local function spawnShop(lobby)
+	if workspace:FindFirstChild("ShopBoard") then workspace.ShopBoard:Destroy() end
+
+	local cf = lobby:GetPivot()
+	local _, size = lobby:GetBoundingBox()
+
+	local shopBoard = Instance.new("Part")
+	shopBoard.Name = "ShopBoard"
+	shopBoard.Size = Vector3.new(24, 16, 1)
+	shopBoard.Anchored = true
+	shopBoard.CanCollide = true
+	shopBoard.Transparency = 1 -- Invisible board, GUI handles visuals
+
+	-- Position: Left side of the lobby, facing center
+	-- Corner position: Back Left relative to the spawn direction (Z+)
+	-- We place it slightly inside the boundary to avoid clipping with walls
+	local offset = Vector3.new((-size.X / 2) + 2, 8, 0) -- 8 studs up from center height
+
+	-- Face towards positive X (center)
+	shopBoard.CFrame = cf * CFrame.new(offset) * CFrame.Angles(0, math.rad(-90), 0)
+
+	shopBoard.Parent = workspace
+	Logger.Info("ShopBoard spawned.")
+end
+
 -- Core Logic: Setup Platform Behavior
 function setupPlatform(platform)
 	local mainPart = platform.PrimaryPart or platform:FindFirstChildWhichIsA("BasePart", true)
@@ -170,6 +196,9 @@ local function initGame()
     lobby.Name = "Lobby"
     lobby.Parent = workspace
     lobby:PivotTo(CFrame.new(0, CONFIG.LOBBY_HEIGHT, 0))
+
+    -- Spawn Shop
+    spawnShop(lobby)
 
     -- Spawn First Platform
     -- "distance fija (ej. 12 studs) del Lobby"
