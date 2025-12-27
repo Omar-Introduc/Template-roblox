@@ -8,7 +8,10 @@ local CONFIG = {
     COUNTDOWN_TIME = 3,
     FALL_DELAY = 2,
     RESET_DELAY = 5,
-    GAP = 12, 
+    
+    -- DISTANCIA DINÁMICA AJUSTADA
+    ESPACIO_ENTRE_BORDES = 5, -- Reducido de 8 a 5 para saltos más fáciles al inicio
+    
     TAG_PLATFORMA = "PlataformaCaida",
     
     -- CONFIGURACIÓN DE MOVIMIENTO
@@ -30,7 +33,7 @@ end
 
 local activatePlatformLogic 
 
--- Función de movimiento: Ajustada para evitar tirones (Snapping)
+-- Función de movimiento sincronizado
 local function aplicarMovimientoSincronizado(platform, mainPart)
     if platform.Name == "Plataforma_1" then return end
 
@@ -43,7 +46,6 @@ local function aplicarMovimientoSincronizado(platform, mainPart)
     alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
     alignPos.Attachment0 = attachment
     alignPos.MaxForce = 1000000 
-    -- Bajamos la Responsiveness para que el movimiento sea más elástico y no pegue tirones
     alignPos.Responsiveness = 15 
     alignPos.Enabled = true
     alignPos.Parent = mainPart
@@ -70,9 +72,9 @@ local function aplicarMovimientoSincronizado(platform, mainPart)
             tiempo += dt
             
             local nuevoZ = CentroGlobalZ + (math.sin(tiempo * CONFIG.VELOCIDAD_OSCILACION) * CONFIG.AMPLITUD_MAXIMA)
-            -- Usamos Position para el objetivo del AlignPosition
             alignPos.Position = Vector3.new(xOriginal, yOriginal, nuevoZ)
             
+            -- Solo se detiene el movimiento si se vuelve negra (pisada)
             if platform:GetAttribute("Triggered") == true and mainPart.Color == Color3.new(0,0,0) then
                 break
             end
@@ -125,19 +127,22 @@ local function spawnNext(currentPlatform)
 
     if estructuras:FindFirstChild(nextName) then return end
 
-    local template = ServerStorage:FindFirstChild("PlataformaTemplate")
+    local prefabs = ServerStorage:WaitForChild("Prefabs")
+    local template = prefabs:FindFirstChild("PlataformaTemplate")
     if not template then return end
 
     local newPlatform = template:Clone()
     newPlatform.Name = nextName
     
-    local incremento = 0.2 
-    local distanciaCalculada = CONFIG.GAP + (nextNum * incremento)
-    if distanciaCalculada > 22 then distanciaCalculada = 22 end
+    -- CALCULO DE DISTANCIA DINÁMICO
+    local sizeX = template:IsA("Model") and template:GetExtentsSize().X or template.Size.X
+    
+    -- Dificultad progresiva suave
+    local incrementoDificultad = math.min(nextNum * 0.1, 5) 
+    local distanciaFinal = sizeX + CONFIG.ESPACIO_ENTRE_BORDES + incrementoDificultad
 
     local currentPivot = currentPlatform:GetPivot()
-    -- IMPORTANTE: Generamos la plataforma un poco más lejos en Z para que no colisione al nacer
-    local nuevaPosicion = Vector3.new(currentPivot.Position.X + distanciaCalculada, currentPivot.Position.Y, CentroGlobalZ)
+    local nuevaPosicion = Vector3.new(currentPivot.Position.X + distanciaFinal, currentPivot.Position.Y, CentroGlobalZ)
     
     local rotacionPerfecta = template:GetPivot().Rotation
     newPlatform:PivotTo(CFrame.new(nuevaPosicion) * rotacionPerfecta)
@@ -169,7 +174,7 @@ activatePlatformLogic = function(platform)
     mainPart.Position = Vector3.new(posBase.X, posBase.Y, CentroGlobalZ)
     mainPart.Rotation = Vector3.new(0,0,0) 
     
-    mainPart.Color = Color3.fromHex("#a3a3a3")
+    -- Se ELIMINÓ la línea que cambiaba el color a gris (#a3a3a3)
     platform:SetAttribute("Triggered", false)
 
     if platform.Name ~= "Plataforma_1" then
@@ -201,6 +206,7 @@ activatePlatformLogic = function(platform)
         local ori = mainPart:FindFirstChild("PlatformOri")
         if ori then ori.Enabled = false end
         
+        -- Único cambio de color: Negro al activarse la caída
         mainPart.Color = Color3.new(0, 0, 0)
         mainPart.Anchored = false 
         mainPart.CanCollide = false
