@@ -5,14 +5,16 @@
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/shared"
-      },
-      "asset": {
-        "$path": "src/assets"
       }
     },
     "ServerScriptService": {
       "Server": {
         "$path": "src/server"
+      }
+    },
+    "ServerStorage": {
+      "Prefabs": {
+        "$path": "src/assets"
       }
     },
     "StarterPlayer": {
