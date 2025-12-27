@@ -2,7 +2,7 @@
     🏭 PrefabFactory - Asset Management System (Exhibition Version)
 
     Responsabilidad: Cargar los assets desde la carpeta 'asset' y organizarlos en 'Templates'.
-    Elimina toda la lógica de parkour y generación de islas.
+    Escaneo recursivo para encontrar archivos en subcarpetas.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -14,8 +14,8 @@ local function setupFolders()
 
 	local root = ReplicatedStorage:FindFirstChild(TEMPLATES_NAME)
 	if root then
-        root:ClearAllChildren()
-    else
+		root:ClearAllChildren()
+	else
 		root = Instance.new("Folder")
 		root.Name = TEMPLATES_NAME
 		root.Parent = ReplicatedStorage
@@ -30,24 +30,42 @@ local function loadAssets(templatesRoot)
 		warn("⚠️ PrefabFactory: Carpeta 'asset' no encontrada.")
 		return
 	end
-	
-    local assetsFound = assetStorage:GetChildren()
-    print("📦 Cargando " .. #assetsFound .. " assets...")
 
-	for _, sourceObj in ipairs(assetsFound) do
-        local clone = sourceObj:Clone()
-        -- Quitar extensiones si las tienen en el nombre
-        clone.Name = sourceObj.Name:gsub("%.rbxm$", ""):gsub("%.rbxmx$", "")
-        clone.Parent = templatesRoot
-        print("   > Asset '" .. clone.Name .. "' cargado.")
+	print("📦 Iniciando escaneo recursivo de assets...")
+
+	local scanFolder
+	scanFolder = function(folder)
+		for _, item in ipairs(folder:GetChildren()) do
+			if item:IsA("Folder") or item:IsA("Configuration") then
+				print("   [FOLDER] Entrando a: " .. item.Name)
+				scanFolder(item)
+			elseif item:IsA("Model") or item:IsA("BasePart") then
+				-- Usamos pcall por si hay problemas de permisos o Archivable
+				local status, clone = pcall(function()
+					return item:Clone()
+				end)
+
+				if status and clone then
+					-- Limpiar nombre de extensiones
+					local cleanName = item.Name:gsub("%.rbxm$", ""):gsub("%.rbxmx$", "")
+					clone.Name = cleanName
+					clone.Parent = templatesRoot
+					print("      ✅ Asset '" .. cleanName .. "' cargado correctamente.")
+				else
+					warn("      ❌ Error al clonar el objeto: " .. item.Name)
+				end
+			end
+		end
 	end
+
+	scanFolder(assetStorage)
 end
 
 -- Ejecución principal
 local templatesRoot = setupFolders()
 loadAssets(templatesRoot)
 
--- Señal de finalización
+-- Señal de finalización para otros scripts
 templatesRoot:SetAttribute("PrefabReady", true)
 
-print("✅ PrefabFactory: Sistema de Exhibition listo.")
+print("✅ PrefabFactory: Proceso finalizado con éxito.")
