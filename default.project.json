@@ -26,39 +26,6 @@
       "$properties": {
         "FilteringEnabled": true
       }
-    },
-    "Lighting": {
-      "$properties": {
-        "Ambient": [
-          255,
-          255,
-          255
-        ],
-        "OutdoorAmbient": [
-          255,
-          255,
-          255
-        ],
-        "Brightness": 5,
-        "ClockTime": 14,
-        "GlobalShadows": false,
-        "Technology": "Voxel",
-        "ExposureCompensation": 2,
-        "EnvironmentDiffuseScale": 0,
-        "EnvironmentSpecularScale": 0
-      },
-      "Sky": {
-        "$className": "Sky",
-        "$properties": {
-          "SkyboxBk": "rbxassetid://6006467723",
-          "SkyboxDn": "rbxassetid://6006467723",
-          "SkyboxFt": "rbxassetid://6006467723",
-          "SkyboxLf": "rbxassetid://6006467723",
-          "SkyboxRt": "rbxassetid://6006467723",
-          "SkyboxUp": "rbxassetid://6006467723",
-          "SunAngularSize": 0
-        }
-      }
     }
   }
 }
