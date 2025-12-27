@@ -1,257 +1,213 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ServerScriptService = game:GetService("ServerScriptService")
 local Debris = game:GetService("Debris")
-local TweenService = game:GetService("TweenService")
 
--- 1. Preparation: Wait for assets
-local asset = ReplicatedStorage:WaitForChild("asset", 10)
-if not asset then
+-- 1. Constants and Settings
+local ASSET_PATH = "juego1"
+local MAX_PLATFORMS = 50
+local START_HEIGHT = 10
+local BASE_GAP = 4
+local GAP_INCREMENT = 0.5
+local INCREMENT_STEP = 5
+
+local THEME_COLORS = {
+	Concrete = Color3.fromHex("#444444"), -- Gris Oscuro
+	Basalt = Color3.fromHex("#2a2a2a"), -- Casi Negro
+	Wood = Color3.fromHex("#5D4037"), -- Marrón
+	Fabric = Color3.fromHex("#D7CCC8"), -- Fondo Cartel
+	Plastic = Color3.fromHex("#3E2723"), -- Borde Cartel
+	Black = Color3.new(0, 0, 0)
+}
+
+-- 2. Wait for Assets
+local assetFolder = ReplicatedStorage:WaitForChild("asset", 10)
+if not assetFolder then
 	warn("CRITICAL: 'asset' folder not found in ReplicatedStorage.")
 	return
 end
 
-local juego1 = asset:WaitForChild("juego1", 10)
-if not juego1 then
+local gameAssets = assetFolder:WaitForChild(ASSET_PATH, 10)
+if not gameAssets then
 	warn("CRITICAL: 'juego1' folder not found in ReplicatedStorage.asset.")
 	return
 end
 
-local lobbyTemplate = juego1:WaitForChild("Lobby", 10)
-local platformTemplate = juego1:WaitForChild("Plataforma_Level1", 10)
+local lobbyTemplate = gameAssets:WaitForChild("Lobby", 10)
+local platformTemplate = gameAssets:WaitForChild("Plataforma_Level1", 10)
 
-if not lobbyTemplate then
-	warn("CRITICAL: 'Lobby' model not found in juego1.")
-	return
-end
+-- 3. Helper Functions
 
-if not platformTemplate then
-	warn("CRITICAL: 'Plataforma_Level1' model not found in juego1.")
-	return
-end
+-- Helper to apply theme based on part names
+local function applyTheme(model, difficultyIndex)
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") then
+			-- Physics Setup
+			part.Anchored = true
+			pcall(function()
+				part.CollisionFidelity = Enum.CollisionFidelity.PreciseConvexDecomposition
+			end)
 
--- Helper to get size of a model/part
-local function getSize(model)
-	if model:IsA("Model") then
-		local cf, size = model:GetBoundingBox()
-		return size
-	elseif model:IsA("BasePart") then
-		return model.Size
-	end
-	return Vector3.new(0, 0, 0)
-end
+			local name = part.Name
 
--- Helper to set properties safely
-local function setupModelProperties(model)
-	if model:IsA("BasePart") then
-		model.Anchored = true
-		pcall(function()
-			model.CollisionFidelity = Enum.CollisionFidelity.PreciseConvexDecomposition
-		end)
-	elseif model:IsA("Model") then
-		for _, descendant in ipairs(model:GetDescendants()) do
-			if descendant:IsA("BasePart") then
-				descendant.Anchored = true
-				pcall(function()
-					descendant.CollisionFidelity = Enum.CollisionFidelity.PreciseConvexDecomposition
-				end)
-			end
-		end
-	end
-end
-
--- Helper to set color and material
-local function setVisuals(model, color, material)
-	if model:IsA("BasePart") then
-		model.Color = color
-		model.Material = material
-	elseif model:IsA("Model") then
-		for _, descendant in ipairs(model:GetDescendants()) do
-			if descendant:IsA("BasePart") then
-				descendant.Color = color
-				descendant.Material = material
-			end
-		end
-	end
-end
-
--- Helper to create countdown GUI
-local function createCountdownGui()
-	local billboard = Instance.new("BillboardGui")
-	billboard.Size = UDim2.new(0, 100, 0, 50)
-	billboard.StudsOffset = Vector3.new(0, 5, 0)
-	billboard.AlwaysOnTop = true
-
-	local textLabel = Instance.new("TextLabel")
-	textLabel.Size = UDim2.new(1, 0, 1, 0)
-	textLabel.BackgroundTransparency = 1
-	textLabel.TextColor3 = Color3.new(1, 1, 1)
-	textLabel.TextStrokeTransparency = 0
-	textLabel.TextScaled = true
-	textLabel.Text = ""
-	textLabel.Parent = billboard
-
-	return billboard
-end
-
-local function spawnPlatform(index, position, sizeZ)
-	local platform = platformTemplate:Clone()
-	platform.Name = "Plataforma_" .. index
-
-	-- Setup Initial Properties
-	setupModelProperties(platform)
-
-	-- Aesthetics
-	local hue = 0.33 - (0.33 * (index - 1) / 49) -- Green (0.33) to Red (0)
-	local color = Color3.fromHSV(hue, 1, 1)
-	setVisuals(platform, color, Enum.Material.Neon)
-
-	-- Positioning
-	if platform:IsA("Model") then
-		platform:PivotTo(CFrame.new(position))
-	else
-		platform.CFrame = CFrame.new(position)
-	end
-
-	platform.Parent = workspace
-
-	-- Logic
-	local isTouched = false
-	local function onTouched(otherPart)
-		if isTouched then return end
-		local humanoid = otherPart.Parent:FindFirstChild("Humanoid")
-		if humanoid then
-			isTouched = true
-
-			-- Visual Countdown
-			local gui = createCountdownGui()
-			gui.Parent = platform -- Attach to platform
-			-- If platform is model, attach to PrimaryPart or a part
-			if platform:IsA("Model") then
-				if platform.PrimaryPart then
-					gui.Adornee = platform.PrimaryPart
-				else
-					-- Find first part
-					local firstPart = platform:FindFirstChildWhichIsA("BasePart", true)
-					if firstPart then gui.Adornee = firstPart end
+			-- Material and Color Logic
+			if name:match("Suelo") or name:match("Piso") or name:match("Base") then
+				part.Material = Enum.Material.Concrete
+				part.Color = THEME_COLORS.Concrete
+			elseif name:match("Roca") or name:match("Piedra") then
+				part.Material = Enum.Material.Basalt
+				part.Color = THEME_COLORS.Basalt
+			elseif name:match("Madera") or name:match("Puente") or name:match("Viga") then
+				part.Material = Enum.Material.Wood
+				part.Color = THEME_COLORS.Wood
+			elseif name:match("Cartel") then
+				part.Material = Enum.Material.Fabric
+				part.Color = THEME_COLORS.Fabric
+			elseif name:match("Borde") then
+				part.Material = Enum.Material.Plastic
+				part.Color = THEME_COLORS.Plastic
+			elseif name:match("PlataformaPrincipal") then
+				part.Material = Enum.Material.Neon
+				if difficultyIndex then
+					-- Green (0.33) -> Red (0.0)
+					local progress = math.clamp((difficultyIndex - 1) / (MAX_PLATFORMS - 1), 0, 1)
+					local hue = 0.33 * (1 - progress)
+					part.Color = Color3.fromHSV(hue, 1, 1)
 				end
-			else
-				gui.Adornee = platform
 			end
+		end
+	end
+end
 
-			-- Countdown 3, 2, 1
+-- Helper to get model size (Z axis)
+local function getModelSizeZ(model)
+	if model:IsA("Model") then
+		local _, size = model:GetBoundingBox()
+		return size.Z
+	elseif model:IsA("BasePart") then
+		return model.Size.Z
+	end
+	return 0
+end
+
+local function createCountdown(parent)
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.new(0, 100, 0, 100)
+	bb.StudsOffset = Vector3.new(0, 5, 0)
+	bb.AlwaysOnTop = true
+
+	local text = Instance.new("TextLabel")
+	text.Size = UDim2.new(1, 0, 1, 0)
+	text.BackgroundTransparency = 1
+	text.TextColor3 = Color3.new(1, 1, 1)
+	text.TextStrokeTransparency = 0
+	text.Font = Enum.Font.FredokaOne
+	text.TextScaled = true
+	text.Parent = bb
+
+	bb.Parent = parent
+	return bb, text
+end
+
+local function spawnPlatform(index, cframe, sizeZ)
+	local model = platformTemplate:Clone()
+	model.Name = "Plataforma_" .. index
+	model:PivotTo(cframe)
+	model.Parent = workspace
+
+	applyTheme(model, index)
+
+	-- Gameplay Logic
+	local triggered = false
+
+	-- Identify the main interaction part
+	local mainPart = nil
+	for _, p in ipairs(model:GetDescendants()) do
+		if p:IsA("BasePart") and p.Name:match("PlataformaPrincipal") then
+			mainPart = p
+			break
+		end
+	end
+	-- Fallback
+	if not mainPart then
+		mainPart = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+	end
+
+	local function onTouched(hit)
+		if triggered then return end
+		if hit.Parent and hit.Parent:FindFirstChild("Humanoid") then
+			triggered = true
+
+			-- Countdown
+			local bb, textLabel = createCountdown(mainPart)
 			for i = 3, 1, -1 do
-				gui.TextLabel.Text = tostring(i)
+				textLabel.Text = tostring(i)
 				task.wait(1)
 			end
+			bb:Destroy()
 
-			-- Fall Logic (T=0)
-			gui:Destroy()
-
-			setVisuals(platform, Color3.new(0, 0, 0), Enum.Material.Neon) -- Black
-
-			if platform:IsA("BasePart") then
-				platform.CanCollide = false
-				platform.Anchored = false
-			elseif platform:IsA("Model") then
-				for _, d in ipairs(platform:GetDescendants()) do
-					if d:IsA("BasePart") then
-						d.CanCollide = false
-						d.Anchored = false
-					end
+			-- Fall
+			for _, p in ipairs(model:GetDescendants()) do
+				if p:IsA("BasePart") then
+					p.Color = THEME_COLORS.Black
+					p.Anchored = false
+					p.CanCollide = false
 				end
 			end
 
-			-- Destroy at T=2 (2 seconds after fall starts)
+			-- Destroy after 2s
 			task.delay(2, function()
-				if platform and platform.Parent then
-					platform:Destroy()
-				end
+				if model then model:Destroy() end
 			end)
 
-			-- Respawn at T=5 (5 seconds after fall starts)
+			-- Respawn after 5s (from fall start)
 			task.delay(5, function()
-				spawnPlatform(index, position, sizeZ)
+				spawnPlatform(index, cframe, sizeZ)
 			end)
 		end
 	end
 
-	-- Connect Touched
-	if platform:IsA("BasePart") then
-		platform.Touched:Connect(onTouched)
-	elseif platform:IsA("Model") then
-		-- Connect to all parts or just the main one?
-		-- Better to connect to all parts but debounce handles single trigger.
-		for _, d in ipairs(platform:GetDescendants()) do
-			if d:IsA("BasePart") then
-				d.Touched:Connect(onTouched)
-			end
-		end
+	if mainPart then
+		mainPart.Touched:Connect(onTouched)
 	end
 end
 
-local function setupLevel()
+-- 4. Main Level Generation
+local function generateLevel()
+	-- Clean workspace
+	for _, child in ipairs(workspace:GetChildren()) do
+		if child.Name == "Lobby" or child.Name:match("Plataforma_") then
+			child:Destroy()
+		end
+	end
+
 	-- Spawn Lobby
 	local lobby = lobbyTemplate:Clone()
 	lobby.Name = "Lobby"
-	setupModelProperties(lobby)
-	setVisuals(lobby, Color3.fromRGB(60, 60, 60), Enum.Material.Concrete) -- Gris oscuro
-
-	if lobby:IsA("Model") then
-		lobby:PivotTo(CFrame.new(0, 10, 0))
-	else
-		lobby.CFrame = CFrame.new(0, 10, 0)
-	end
+	lobby:PivotTo(CFrame.new(0, START_HEIGHT, 0))
 	lobby.Parent = workspace
+	applyTheme(lobby, nil)
 
-	local lobbySize = getSize(lobby)
+	local lobbySizeZ = getModelSizeZ(lobby)
 
-	-- Generate Platforms
-	local currentZ = (0) + (lobbySize.Z / 2) -- Start at edge of lobby?
-	-- User says "Lobby en 0,10,0". "Genera 50 plataformas hacia adelante (Eje Z)".
-	-- Usually "Forward" is -Z in Roblox, but often users mean +Z.
-	-- If "Gap" is positive, let's assume +Z or -Z.
-	-- Let's stick to +Z as "Forward" is ambiguous. Actually Default Forward is -Z.
-	-- But let's look at existing code or conventions.
-	-- I'll use +Z for now as it's common for "progress".
-	-- Wait, "50 platforms forward". If I use -Z, I subtract. If +Z, I add.
-	-- I'll use +Z because coordinates usually increase.
+	-- Calculate Start Position (Center of Lobby + Half Size = Edge)
+	-- Platforms go along +Z
+	local currentZ = (lobbySizeZ / 2)
 
-	-- Wait, let's look at `LevelGenerator.server.luau` in memory if I can recall.
-	-- It generated "50 falling platforms with increasing gaps".
-	-- Let's stick to +Z.
+	local platformSizeZ = getModelSizeZ(platformTemplate)
 
-	-- Calculate Z start.
-	-- Lobby at 0. Edge is at +Size.Z/2.
+	for i = 1, MAX_PLATFORMS do
+		-- Gap Calculation
+		local gapMultiplier = math.floor((i - 1) / INCREMENT_STEP)
+		local currentGap = BASE_GAP + (gapMultiplier * GAP_INCREMENT)
 
-	local zCursor = 10 + (lobbySize.Z / 2) -- Center Z (0) + half size. + 10 offset? No, Lobby is at 0,10,0. Center is 0.
-	zCursor = (lobbySize.Z / 2)
+		-- Position: Previous Edge + Gap + Half Size
+		local centerZ = currentZ + currentGap + (platformSizeZ / 2)
 
-	local platformSize = getSize(platformTemplate)
+		local platformCFrame = CFrame.new(0, START_HEIGHT, centerZ) -- Fixed Rotation (0,0,0)
+		spawnPlatform(i, platformCFrame, platformSizeZ)
 
-	for i = 1, 50 do
-		-- Difficulty: Gap
-		-- Initial 4. Increase 0.5 every 5 platforms.
-		-- (i-1)//5 gives 0 for 1-5, 1 for 6-10.
-		local gapIncrease = math.floor((i - 1) / 5) * 0.5
-		local gap = 4 + gapIncrease
-
-		-- Position Calculation
-		-- Center to Center = (PrevSize/2) + Gap + (CurrentSize/2)
-		-- Since we don't track prev size accurately if they vary, let's assume all platforms are same size as template.
-		-- But for the FIRST one, it is LobbyEdge + Gap + PlatformHalf.
-
-		if i == 1 then
-			zCursor = zCursor + gap + (platformSize.Z / 2)
-		else
-			zCursor = zCursor + (platformSize.Z / 2) + gap + (platformSize.Z / 2)
-		end
-
-		local pos = Vector3.new(0, 10, zCursor) -- Same Y height (10) as Lobby? Or Lobby floor is at 10?
-		-- "Instancia el Lobby en la posición 0, 10, 0".
-		-- "Genera 50 plataformas...". Usually meant to be runnable.
-
-		spawnPlatform(i, pos, platformSize.Z)
+		-- Update cursor to new edge
+		currentZ = centerZ + (platformSizeZ / 2)
 	end
 end
 
-setupLevel()
+generateLevel()
