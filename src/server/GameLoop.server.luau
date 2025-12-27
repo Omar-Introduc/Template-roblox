@@ -1,61 +1,34 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
+local Players = game:GetService("Players")
 
 -- Module Import
--- Assuming Logger is in ReplicatedStorage.Shared as per standard framework structure
+local MapManager = require(ReplicatedStorage.Shared.MapManager)
+
+-- Logger
 local Logger
 local success, result = pcall(function()
-	-- Add timeout to prevent infinite yield if Shared folder is missing
 	return require(ReplicatedStorage:WaitForChild("Shared", 2):WaitForChild("Logger", 2))
 end)
-
-if success then
-	Logger = result
-else
-	-- Fallback logger if module is missing
-	Logger = {
-		Info = function(msg) print("[INFO] " .. msg) end,
-		Warn = function(msg) warn("[WARN] " .. msg) end,
-		Critical = function(msg) warn("[CRITICAL] " .. msg) end,
-		Error = function(msg) warn("[ERROR] " .. msg) end
-	}
+if success then Logger = result else
+	Logger = { Info = print, Warn = warn, Critical = warn, Error = warn }
 end
 
 -- Constants
 local CONFIG = {
-	ASSET_PATH = "juego1",
-	GAP = 6, -- Distance between platforms (studs)
-	START_DISTANCE = 12, -- Distance from Lobby to first platform
-	LOBBY_HEIGHT = 10,
 	COUNTDOWN_TIME = 3,
-	FALL_DELAY = 2
+	FALL_DELAY = 2,
+    RESET_DELAY = 5 -- Time before resetting a fallen platform (if applicable)
 }
 
--- Asset Retrieval
-local assetFolder = ReplicatedStorage:WaitForChild("asset"):WaitForChild(CONFIG.ASSET_PATH)
-
-local function getAsset(name)
-	local asset = assetFolder:FindFirstChild(name)
-	if not asset then
-		Logger.Critical("Asset not found: " .. name)
-	end
-	return asset
+-- Wait for Scan
+if not workspace:GetAttribute("MapScanned") then
+    workspace:GetAttributeChangedSignal("MapScanned"):Wait()
 end
 
--- State
-local currentPlatformCount = 0
-local platformTemplate = getAsset("Plataforma_Level1")
-local lobbyTemplate = getAsset("Lobby")
+Logger.Info("[GameLoop] Map Scan confirmed. Initializing game logic.")
 
-if not platformTemplate or not lobbyTemplate then
-	Logger.Critical("Essential assets missing. GameLoop stopped.")
-	return
-end
-
--- Forward declaration
-local setupPlatform
-
--- Helper: Create Visual Countdown
+-- Helper: Visual Countdown
 local function createCountdown(parentPart)
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "CountdownGui"
@@ -77,70 +50,35 @@ local function createCountdown(parentPart)
 	return bb, text
 end
 
--- Core Logic: Spawn Next Platform
-local function spawnNextPlatform(previousPlatform)
-	-- Determine position
-	local prevCF = previousPlatform:GetPivot()
-	local _, prevSize = previousPlatform:GetBoundingBox()
-	local _, nextSize = platformTemplate:GetBoundingBox()
-	
-	-- Calculate forward offset (Global Z axis positive)
-	-- "sumando el Gap + tamaño del modelo"
-	-- Distance from center to center = (PrevSize/2) + GAP + (NextSize/2)
-	local offsetZ = (prevSize.Z / 2) + CONFIG.GAP + (nextSize.Z / 2)
-	local nextPos = prevCF.Position + Vector3.new(0, 0, offsetZ)
-	
-	-- Instantiate
-	currentPlatformCount += 1
-	local newPlatform = platformTemplate:Clone()
-	newPlatform.Name = "Plataforma_" .. currentPlatformCount
+-- Logic: Activate Platform
+-- Instead of spawning new ones, we enable the logic on the existing ones.
+local function activatePlatform(platform)
+    if not platform then return end
 
-    -- Preserve template rotation
-    local templateRotation = platformTemplate:GetPivot().Rotation
-	newPlatform:PivotTo(CFrame.new(nextPos) * templateRotation)
-	newPlatform.Parent = workspace
-
-    return newPlatform
-end
-
--- Helper: Spawn Shop Board
-local function spawnShop(lobby)
-	if workspace:FindFirstChild("ShopBoard") then workspace.ShopBoard:Destroy() end
-
-	local cf = lobby:GetPivot()
-	local _, size = lobby:GetBoundingBox()
-
-	local shopBoard = Instance.new("Part")
-	shopBoard.Name = "ShopBoard"
-	shopBoard.Size = Vector3.new(24, 16, 1)
-	shopBoard.Anchored = true
-	shopBoard.CanCollide = true
-	shopBoard.Transparency = 1 -- Invisible board, GUI handles visuals
-
-	-- Position: Left side of the lobby, facing center
-	-- Corner position: Back Left relative to the spawn direction (Z+)
-	-- We place it slightly inside the boundary to avoid clipping with walls
-	local offset = Vector3.new((-size.X / 2) + 2, 8, 0) -- 8 studs up from center height
-
-	-- Face towards positive X (center)
-	shopBoard.CFrame = cf * CFrame.new(offset) * CFrame.Angles(0, math.rad(-90), 0)
-
-	shopBoard.Parent = workspace
-	Logger.Info("ShopBoard spawned.")
-end
-
--- Core Logic: Setup Platform Behavior
-function setupPlatform(platform)
-	local mainPart = platform.PrimaryPart or platform:FindFirstChildWhichIsA("BasePart", true)
+    local mainPart = platform:IsA("Model") and platform.PrimaryPart or platform
 	if not mainPart then
 		Logger.Warn("Platform " .. platform.Name .. " has no PrimaryPart!")
 		return
 	end
-	
-	-- Use an attribute to track if already triggered to avoid multiple spawns
-	platform:SetAttribute("Triggered", false)
 
-	local connection
+    -- Disconnect previous connections if any (cleanup re-runs)
+    local existingConn = platform:GetAttribute("Connection")
+    if existingConn then
+        -- Note: We can't store actual connections in attributes.
+        -- We just check Triggered state.
+    end
+
+    -- Reset state
+    platform:SetAttribute("Triggered", false)
+    if platform:IsA("BasePart") then
+        platform.Color = Color3.fromHex("#a3a3a3") -- Reset color (Grey) or Original
+        platform.Transparency = 0
+        platform.CanCollide = true
+        platform.Anchored = true
+    end
+    -- If it's a model, we'd reset children. For now assuming Parts or simple Models.
+
+    local connection
 	connection = mainPart.Touched:Connect(function(hit)
 		if platform:GetAttribute("Triggered") then return end
 		if not hit.Parent or not hit.Parent:FindFirstChild("Humanoid") then return end
@@ -149,11 +87,11 @@ function setupPlatform(platform)
 		platform:SetAttribute("Triggered", true)
 		Logger.Info("Player touched: " .. platform.Name)
 		
-		-- 2. Spawn Next Immediately (Chain Generation)
-		local nextPlat = spawnNextPlatform(platform)
-		if nextPlat then
-			setupPlatform(nextPlat)
-		end
+        -- 2. No spawning next platform (It's static).
+        -- But maybe we want to verify the *next* platform is reachable or ready?
+        -- The prompt says "scanners ... find existing objects ... give functionality".
+        -- The "Spawns Next Platform" logic is replaced by the map being pre-built.
+        -- So we skip straight to the "Countdown -> Fall" mechanic.
 
 		-- 3. Countdown
 		local bb, textLabel = createCountdown(mainPart)
@@ -163,7 +101,30 @@ function setupPlatform(platform)
 		end
 		if bb then bb:Destroy() end
 
-		-- 4. Fall and Destroy
+		-- 4. Fall (Visual + Physics)
+		-- "Turns Black and Falls (Anchored=false)"
+        -- NOTE: Since we cannot Destroy the platform permanently (it's a static map we might want to reuse?),
+        -- The user said "nunca crearlos". If we destroy them, we can't recreate them without cloning.
+        -- "PROHIBIDO instanciar partes ... desde el script."
+        -- This implies we should probably HIDE them and RESET them later, OR
+        -- the user expects a single run.
+        -- BUT: "Infinite Level" usually implies regeneration.
+        -- If I destroy it, it's gone.
+        -- "Platform lifecycle ... Destroyed via Debris (2s)."
+        -- If I follow this, the map disappears.
+        -- User said: "scripts must act as Controllers... never create nor move them from their original design position."
+        -- BUT also: "turn black and fall". Falling moves them.
+        -- INTERPRETATION:
+        -- The "Design Position" is where they *start*.
+        -- Gameplay moves them (Falling).
+        -- To "Respawn", we must reset them to the saved Original CFrame.
+        -- We should probably Store the Original CFrame in MapManager or Attribute.
+
+        -- Save original CFrame if not saved
+        if not platform:GetAttribute("OriginalCFrame") then
+             platform:SetAttribute("OriginalCFrame", mainPart.CFrame)
+        end
+
 		for _, part in ipairs(platform:GetDescendants()) do
 			if part:IsA("BasePart") then
 				part.Color = Color3.new(0, 0, 0) -- Turn Black
@@ -171,96 +132,106 @@ function setupPlatform(platform)
 				part.CanCollide = false
 			end
 		end
+        if platform:IsA("BasePart") then
+            platform.Color = Color3.new(0,0,0)
+            platform.Anchored = false
+            platform.CanCollide = false
+        end
 		
-		Debris:AddItem(platform, CONFIG.FALL_DELAY) -- Destroy shortly after falling
+        -- Instead of Destroying, we Wait and Reset.
+        task.delay(CONFIG.FALL_DELAY, function()
+            -- Hide/Move away?
+            -- Or just Reset immediately after some time?
+            -- "Destroyed via Debris (2s)" was the old logic.
+            -- New Logic: We must not Destroy if we can't Create.
+            -- So we must Reset.
+
+            task.wait(CONFIG.RESET_DELAY)
+
+            -- RESET LOGIC
+            local origCF = platform:GetAttribute("OriginalCFrame")
+            if origCF then
+                if platform:IsA("BasePart") then
+                    platform.AssemblyLinearVelocity = Vector3.zero
+                    platform.AssemblyAngularVelocity = Vector3.zero
+                    platform.CFrame = origCF
+                    platform.Anchored = true
+                    platform.CanCollide = true
+                    platform.Color = Color3.fromHex("#a3a3a3") -- Restore color
+                end
+                platform:SetAttribute("Triggered", false)
+                Logger.Info("Platform reset: " .. platform.Name)
+            end
+        end)
+
         connection:Disconnect()
+        -- Re-connect happens when we reset?
+        -- Actually, once disconnected, we need to reconnect.
+        -- Better approach: Recursion or a permanent connection that checks state?
+        -- Touched event fires constantly. Better to disconnect and re-hook on reset.
+        -- For this iteration, let's keep it simple: The platform falls.
+        -- I'll add a `respawnPlatform` function called after the delay.
+
+        -- wait for reset delay then call setup again?
+        -- See implementation below.
 	end)
 end
 
--- Initialization
-local function initGame()
-	Logger.Info("Starting Procedural Infinite Jump GameLoop...")
-	
-	-- Cleanup Environment
-	if workspace:FindFirstChild("Baseplate") then workspace.Baseplate:Destroy() end
+-- Override activatePlatform to include re-hooking
+local function setupPlatform(platform)
+    if not platform then return end
+    local mainPart = platform:IsA("Model") and platform.PrimaryPart or platform
 
-    -- Remove old levels/platforms/lobbies
-    for _, child in ipairs(workspace:GetChildren()) do
-        if child.Name:match("Plataforma") or child.Name:match("Level") or child.Name == "Lobby" then
-            child:Destroy()
-        end
+    -- Save initial state
+    if not platform:GetAttribute("OriginalCFrame") then
+        platform:SetAttribute("OriginalCFrame", mainPart.CFrame)
     end
 
-    -- Spawn Lobby
-    local lobby = lobbyTemplate:Clone()
-    lobby.Name = "Lobby"
-    lobby.Parent = workspace
-    lobby:PivotTo(CFrame.new(0, CONFIG.LOBBY_HEIGHT, 0))
+    -- Reset visual/physics
+    mainPart.AssemblyLinearVelocity = Vector3.zero
+    mainPart.AssemblyAngularVelocity = Vector3.zero
+    mainPart.CFrame = platform:GetAttribute("OriginalCFrame")
+    mainPart.Anchored = true
+    mainPart.CanCollide = true
+    mainPart.Color = Color3.fromHex("#a3a3a3") -- Default Grey
+    mainPart.Transparency = 0
 
-    -- Spawn Shop
-    spawnShop(lobby)
+    platform:SetAttribute("Triggered", false)
 
-    -- Spawn First Platform
-    -- "distance fija (ej. 12 studs) del Lobby"
-    local lobbyCF = lobby:GetPivot()
-    local _, lobbySize = lobby:GetBoundingBox()
-    local _, platSize = platformTemplate:GetBoundingBox()
+    -- Connect
+    local connection
+    connection = mainPart.Touched:Connect(function(hit)
+        if platform:GetAttribute("Triggered") then return end
+        if not hit.Parent or not hit.Parent:FindFirstChild("Humanoid") then return end
 
-    -- Calculate position for first platform (Global Z +)
-    local offsetZ = (lobbySize.Z / 2) + CONFIG.START_DISTANCE + (platSize.Z / 2)
-    local firstPos = lobbyCF.Position + Vector3.new(0, 0, offsetZ)
+        platform:SetAttribute("Triggered", true)
 
-    local firstPlatform = platformTemplate:Clone()
-    firstPlatform.Name = "Plataforma_1"
-    local templateRotation = platformTemplate:GetPivot().Rotation
-    firstPlatform:PivotTo(CFrame.new(firstPos) * templateRotation)
-    firstPlatform.Parent = workspace
+        -- Countdown
+        local bb, textLabel = createCountdown(mainPart)
+        for i = CONFIG.COUNTDOWN_TIME, 1, -1 do
+            textLabel.Text = tostring(i)
+            task.wait(1)
+        end
+        if bb then bb:Destroy() end
 
-    currentPlatformCount = 1
-    setupPlatform(firstPlatform)
-    Logger.Info("Game Initialized. Plataforma_1 spawned.")
+        -- Fall
+        mainPart.Color = Color3.new(0,0,0)
+        mainPart.Anchored = false
+        mainPart.CanCollide = false
+
+        connection:Disconnect()
+
+        -- Schedule Reset
+        task.delay(CONFIG.FALL_DELAY + CONFIG.RESET_DELAY, function()
+             setupPlatform(platform)
+        end)
+    end)
 end
 
--- Backup / Watchdog Loop
--- "Si el juego se queda vacío (reinicio del ciclo)"
-task.spawn(function()
-    while true do
-        task.wait(2)
-        local platformCount = 0
-        for _, child in ipairs(workspace:GetChildren()) do
-            if child.Name:match("Plataforma_") then
-                platformCount += 1
-            end
-        end
+-- Initialize All Platforms
+local platforms = MapManager.GetAllPlatforms()
+for _, plat in ipairs(platforms) do
+    setupPlatform(plat)
+end
 
-        if platformCount == 0 then
-            Logger.Warn("No platforms detected. Regenerating initial platform...")
-
-            -- Ensure Lobby exists (if it was destroyed for some reason, though unlikely)
-            local lobby = workspace:FindFirstChild("Lobby")
-             if lobby then
-                 local lobbyCF = lobby:GetPivot()
-                 local _, lobbySize = lobby:GetBoundingBox()
-                 local _, platSize = platformTemplate:GetBoundingBox()
-
-                 local offsetZ = (lobbySize.Z / 2) + CONFIG.START_DISTANCE + (platSize.Z / 2)
-                 local firstPos = lobbyCF.Position + Vector3.new(0, 0, offsetZ)
-
-                 local firstPlatform = platformTemplate:Clone()
-                 firstPlatform.Name = "Plataforma_1"
-                 local templateRotation = platformTemplate:GetPivot().Rotation
-                 firstPlatform:PivotTo(CFrame.new(firstPos) * templateRotation)
-                 firstPlatform.Parent = workspace
-
-                 currentPlatformCount = 1
-                 setupPlatform(firstPlatform)
-             else
-                 -- Full init if lobby is gone too
-                 initGame()
-             end
-        end
-    end
-end)
-
--- Start the game
-initGame()
+Logger.Info("GameLoop: All static platforms initialized.")

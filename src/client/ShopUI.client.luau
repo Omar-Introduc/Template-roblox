@@ -44,11 +44,38 @@ local function create(className, properties, children)
 end
 
 -- Wait for Shop Board
-local shopBoard = workspace:WaitForChild("ShopBoard", 60)
+-- REFACTOR: Look for ShopBoard inside workspace.estructuras or workspace directly if scanned
+-- The instructions say: "Actualmente busca un ShopBoard que se generaba proceduralmente. Ahora debe buscar el ShopBoard estático que yo colocaré manualmente en estructuras."
+-- It is likely in workspace.estructuras.ShopBoard.
+
+local shopBoard = nil
+local maxRetries = 10
+local retryCount = 0
+
+while not shopBoard and retryCount < maxRetries do
+    -- Try direct workspace (legacy fallback)
+    shopBoard = workspace:FindFirstChild("ShopBoard")
+
+    -- Try inside estructuras
+    if not shopBoard then
+        local estructuras = workspace:FindFirstChild("estructuras")
+        if estructuras then
+            shopBoard = estructuras:FindFirstChild("ShopBoard")
+        end
+    end
+
+    if not shopBoard then
+        retryCount += 1
+        task.wait(1)
+    end
+end
+
 if not shopBoard then
-	warn("ShopBoard not found!")
+	warn("ShopBoard not found in Workspace or estructuras! Shop UI will not load.")
 	return
 end
+
+print("ShopUI attached to: " .. shopBoard:GetFullName())
 
 local surfaceGui = create("SurfaceGui", {
 	Name = "MiningShopGui",
