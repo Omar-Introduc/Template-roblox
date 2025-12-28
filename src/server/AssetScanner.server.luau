@@ -51,17 +51,54 @@ local function scanMap()
         end
     end
 
-    -- 4. Vincular Lobby y Tienda
+    -- 4. Vincular Lobby y Tiendas (Manual)
     local lobby = CollectionService:GetTagged("LobbyTag")[1]
     if lobby then
         MapManager.SetLobby(lobby)
-        print("✅ Lobby vinculado.")
+        print("✅ [Scanner] Lobby vinculado.")
     end
 
-    local tienda = CollectionService:GetTagged("TiendaTag")[1]
-    if tienda then
-        MapManager.SetShopBoard(tienda)
-        print("✅ Tienda vinculada.")
+    local shopsFound = {}
+    -- Buscar por TAG
+    for _, t in ipairs(CollectionService:GetTagged("TiendaTag")) do
+        if t:IsDescendantOf(workspace) then
+            print("🛍️ [Scanner] Tienda detectada por Tag: " .. t.Name)
+            table.insert(shopsFound, t)
+            
+            -- ESTÉTICA "VIDRIO" (Solo propiedades visuales)
+            local mainPart = t:IsA("BasePart") and t or (t:FindFirstChild("Display", true) or t.PrimaryPart or t:FindFirstChildWhichIsA("BasePart", true))
+            if mainPart then
+                mainPart.Material = Enum.Material.Glass
+                mainPart.Transparency = 0.8 -- Más transparente para efecto vidrio fino
+                mainPart.CastShadow = false
+                
+                -- Borde Neón Estético
+                local selection = mainPart:FindFirstChild("NeonBorder") or Instance.new("SelectionBox")
+                selection.Name = "NeonBorder"
+                selection.Adornee = mainPart
+                selection.Color3 = Color3.fromRGB(0, 255, 255)
+                selection.LineThickness = 0.02
+                selection.Transparency = 0.5
+                selection.Parent = mainPart
+            end
+        end
+    end
+    
+    -- Fallback: Buscar por Nombre si no hay Tags
+    if #shopsFound == 0 then
+        local t = workspace:FindFirstChild("ShopBoard", true) or workspace:FindFirstChild("TiendaVisual", true)
+        if t then
+            print("🛍️ [Scanner] Tienda detectada por Nombre: " .. t.Name)
+            CollectionService:AddTag(t, "TiendaTag")
+            table.insert(shopsFound, t)
+        end
+    end
+
+    if #shopsFound > 0 then
+        MapManager.SetShopBoard(shopsFound[1])
+        print("🚀 [Scanner] " .. #shopsFound .. " tienda(s) vinculada(s) exitosamente.")
+    else
+        warn("⚠️ [Scanner] No se detectaron tiendas. Asegúrate de poner el Tag 'TiendaTag' o el nombre 'ShopBoard'.")
     end
 
     -- 5. Notificar al GameLoop

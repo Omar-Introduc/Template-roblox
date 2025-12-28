@@ -5,6 +5,15 @@
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/shared"
+      },
+      "Events": {
+        "$className": "Folder",
+        "PointAwarded": {
+          "$className": "RemoteEvent"
+        },
+        "BuyItem": {
+          "$className": "RemoteFunction"
+        }
       }
     },
     "ServerScriptService": {
