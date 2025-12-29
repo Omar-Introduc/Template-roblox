@@ -7,8 +7,19 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameConfig = require(Shared:WaitForChild("GameConfig"))
 
+function PlatformSpawner.Reset()
+	-- Clean up platforms from a hypothetical container or reset state if needed.
+	-- Since this is stateless utility, we mainly reset if we were tracking something.
+	-- For now, this is a placeholder to satisfy GameManager calls.
+	print("PlatformSpawner: Reset called")
+end
+
 function PlatformSpawner.SpawnNext(currentPlatform: Instance, estructuras: Folder, centroGlobalZ: number)
-	local currentNum = tonumber(string.match(currentPlatform.Name, "%d+")) or 1
+	local currentNum = 1
+	if currentPlatform then
+		currentNum = tonumber(string.match(currentPlatform.Name, "%d+")) or 1
+	end
+
 	local nextNum = currentNum + 1
 	local nextName = "Plataforma_" .. nextNum
 
