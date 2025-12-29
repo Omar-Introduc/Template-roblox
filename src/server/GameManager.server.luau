@@ -26,6 +26,13 @@ if not PlatformTriggered then
 	PlatformTriggered.Parent = EventsFolder
 end
 
+local RequestPointsEvent = EventsFolder:FindFirstChild("RequestPlatformPoints") --[[@as RemoteEvent]]
+if not RequestPointsEvent then
+	RequestPointsEvent = Instance.new("RemoteEvent")
+	RequestPointsEvent.Name = "RequestPlatformPoints"
+	RequestPointsEvent.Parent = EventsFolder
+end
+
 -- Inicializar UI Service (FeedbackService) para escuchar eventos
 FeedbackService.Init(PlatformTriggered.Event)
 
@@ -63,8 +70,7 @@ local function otorgarPuntos(player: Player, platformName: string, position: Vec
 
 	local puntosAGanar = basePuntos * multiplicador
 
-	print(string.format("DEBUG: otorgarPuntos -> Player: %s, Platform: %s, Puntos: %d",
-		player.Name, platformName, puntosAGanar))
+	-- print(string.format("DEBUG: otorgarPuntos -> Player: %s, Platform: %s, Puntos: %d", player.Name, platformName, puntosAGanar))
 
 	local leaderstats = player:FindFirstChild("leaderstats")
 	if leaderstats then
@@ -77,6 +83,31 @@ local function otorgarPuntos(player: Player, platformName: string, position: Vec
 		end
 	end
 end
+
+-- Validate Request Points from Client
+RequestPointsEvent.OnServerEvent:Connect(function(player: Player, platform: Instance)
+	if not platform or not platform:IsA("Model") and not platform:IsA("BasePart") then return end
+
+	local character = player.Character
+	if not character then return end
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart
+	if not rootPart then return end
+
+	local mainPart = platform:IsA("Model") and platform.PrimaryPart or platform
+	if not mainPart or not mainPart:IsA("BasePart") then return end
+
+	-- Validate Distance
+	local dist = (rootPart.Position - mainPart.Position).Magnitude
+	-- Safe margin: Platform size + some latency tolerance
+	-- Assuming platforms are not massive, 25 studs should be enough
+	if dist > 30 then
+		-- Too far, likely cheating or heavy lag
+		return
+	end
+
+	-- Award Points
+	otorgarPuntos(player, platform.Name, mainPart.Position)
+end)
 
 -- Forward declaration
 local activatePlatform
@@ -98,47 +129,11 @@ local function handlePlatformTouch(platform: Instance, mainPart: BasePart)
 		-- 2. Spawnea la siguiente
 		PlatformSpawner.SpawnNext(platform, estructuras, CentroGlobalZ)
 
-		-- 3. Otorgar puntos
+		-- 3. Otorgar puntos (Inicial)
 		otorgarPuntos(player, platform.Name, mainPart.Position)
 
-		-- 4. Iniciar loop de puntos continuos (opcional, lógica de negocio)
-		task.spawn(function()
-			while player and character and humanoid and humanoid.Parent and mainPart and mainPart.Parent do
-				task.wait(0.5)
-
-				local isStanding = false
-
-				-- Check Floor
-				local success, floor = pcall(function() return humanoid.FloorPart end)
-				if success and floor and (floor == mainPart or floor:IsDescendantOf(platform)) then
-					isStanding = true
-				end
-
-				-- Raycast fallback
-				if not isStanding then
-					local hrp = character:FindFirstChild("HumanoidRootPart")
-					if hrp then
-						local params = RaycastParams.new()
-						params.FilterDescendantsInstances = {character}
-						params.FilterType = Enum.RaycastFilterType.Exclude
-						local res = workspace:Raycast(hrp.Position, Vector3.new(0, -10, 0), params)
-						if res and (res.Instance == mainPart or res.Instance:IsDescendantOf(platform)) then
-							isStanding = true
-						end
-					end
-				end
-
-				if isStanding then
-					otorgarPuntos(player, platform.Name, mainPart.Position)
-				else
-					task.wait(0.3)
-					local s2, f2 = pcall(function() return humanoid.FloorPart end)
-					if not (s2 and f2 and (f2 == mainPart or f2:IsDescendantOf(platform))) then
-						break
-					end
-				end
-			end
-		end)
+		-- 4. Iniciar loop de puntos continuos -> DELEGATED TO CLIENT (RequestPointsEvent)
+		-- The server no longer runs a loop here.
 
 		if platform.Name == "Plataforma_1" then
 			return -- Plataforma inicial no cae

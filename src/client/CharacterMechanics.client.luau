@@ -15,12 +15,19 @@ local hasDoubleJumped = false
 
 -- Fly Variables
 local isFlying = false
-local flyBv: BodyVelocity?
-local flyBg: BodyGyro?
+local flyLv: LinearVelocity?
+local flyAo: AlignOrientation?
+local flyAtt: Attachment?
 local CAM_SPEED = 50
 
 local function getCharacter()
 	return player.Character
+end
+
+local function cleanFlyPhysics()
+	if flyLv then flyLv:Destroy() flyLv = nil end
+	if flyAo then flyAo:Destroy() flyAo = nil end
+	if flyAtt then flyAtt:Destroy() flyAtt = nil end
 end
 
 player.CharacterAdded:Connect(function(newChar)
@@ -30,34 +37,49 @@ player.CharacterAdded:Connect(function(newChar)
 	isFlying = false
 	hasDoubleJumped = false
 	canDoubleJump = false
+	cleanFlyPhysics()
 end)
 
 local function stopFlying()
 	isFlying = false
-	if flyBv then flyBv:Destroy() flyBv = nil end
-	if flyBg then flyBg:Destroy() flyBg = nil end
+	cleanFlyPhysics()
 	if humanoid then humanoid.PlatformStand = false end
 end
 
 local function startFlying()
 	if isFlying then return end
+	if not rootPart then return end
 	isFlying = true
 
-	flyBv = Instance.new("BodyVelocity")
-	flyBv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-	flyBv.Velocity = Vector3.zero
-	flyBv.Parent = rootPart
+	-- Create Attachment
+	flyAtt = Instance.new("Attachment")
+	flyAtt.Name = "FlyAttachment"
+	flyAtt.Parent = rootPart
 
-	flyBg = Instance.new("BodyGyro")
-	flyBg.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-	flyBg.CFrame = rootPart.CFrame
-	flyBg.Parent = rootPart
+	-- Create LinearVelocity
+	flyLv = Instance.new("LinearVelocity")
+	flyLv.Name = "FlyLinearVelocity"
+	flyLv.Attachment0 = flyAtt
+	flyLv.VectorVelocity = Vector3.zero
+	flyLv.ForceLimitMode = Enum.ForceLimitMode.Magnitude
+	flyLv.MaxForce = math.huge
+	flyLv.Parent = rootPart
+
+	-- Create AlignOrientation
+	flyAo = Instance.new("AlignOrientation")
+	flyAo.Name = "FlyAlignOrientation"
+	flyAo.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	flyAo.Attachment0 = flyAtt
+	flyAo.MaxTorque = math.huge
+	flyAo.Responsiveness = 50 -- Snappy rotation
+	flyAo.CFrame = rootPart.CFrame
+	flyAo.Parent = rootPart
 
 	humanoid.PlatformStand = true
 end
 
 local function updateFlyPhysics()
-	if not isFlying or not flyBv or not flyBg then return end
+	if not isFlying or not flyLv or not flyAo or not flyAtt then return end
 
 	local camCF = Workspace.CurrentCamera.CFrame
 	local moveDir = Vector3.zero
@@ -73,8 +95,8 @@ local function updateFlyPhysics()
 		moveDir = moveDir.Unit * CAM_SPEED
 	end
 
-	flyBv.Velocity = moveDir
-	flyBg.CFrame = camCF
+	flyLv.VectorVelocity = moveDir
+	flyAo.CFrame = camCF
 end
 
 UserInputService.JumpRequest:Connect(function()
