@@ -75,11 +75,28 @@ local function populateBoard(board)
     -- Usamos un FRAME normal en lugar de ScrollingFrame para un canvas fijo
     local container = Instance.new("Frame")
     container.Name = "ItemsContainer"
-    container.Size = UDim2.new(1, -20, 1, -20)
-    container.Position = UDim2.new(0.5, 0, 0.5, 0)
+    container.Size = UDim2.new(1, -20, 0.8, -20) -- Leave space for header
+    container.Position = UDim2.new(0.5, 0, 0.58, 0)
     container.AnchorPoint = Vector2.new(0.5, 0.5)
     container.BackgroundTransparency = 1 
     container.Parent = sg
+
+    local categoryKey = board:GetAttribute("Category")
+    local category = ShopConfig.Categories[categoryKey]
+
+    -- HEADER TITULO
+    local header = Instance.new("TextLabel")
+    header.Name = "CategoryHeader"
+    header.Size = UDim2.new(1, -40, 0.15, 0)
+    header.Position = UDim2.new(0.5, 0, 0.05, 0)
+    header.AnchorPoint = Vector2.new(0.5, 0)
+    header.BackgroundTransparency = 1
+    header.Font = Enum.Font.FredokaOne
+    header.TextSize = 35
+    header.TextColor3 = Color3.new(1, 1, 1)
+    header.TextStrokeTransparency = 0.5
+    header.Text = category and category.Title or "TIENDA"
+    header.Parent = sg
     
     local gridLayout = Instance.new("UIGridLayout")
     gridLayout.CellSize = UDim2.new(0.48, 0, 0.48, 0)
@@ -88,8 +105,7 @@ local function populateBoard(board)
     gridLayout.VerticalAlignment = Enum.VerticalAlignment.Center
     gridLayout.Parent = container
 
-    local categoryKey = board:GetAttribute("Category")
-    local category = ShopConfig.Categories[categoryKey]
+    -- (Existing categoryKey/category from header block)
     
     local itemsToDisplay = {}
     if category then
@@ -115,24 +131,56 @@ local function populateBoard(board)
         itemCard.Name = item.Id
         itemCard.Active = true -- Ensure it catches input
         
+        -- OVERLAY DE PRÓXIMAMENTE
+        local isImplemented = (item.Implemented ~= false)
+        if not isImplemented then
+            local overlay = Instance.new("Frame")
+            overlay.Name = "ComingSoonOverlay"
+            overlay.Size = UDim2.new(1, 4, 1, 4)
+            overlay.Position = UDim2.new(0.5, 0, 0.5, 0)
+            overlay.AnchorPoint = Vector2.new(0.5, 0.5)
+            overlay.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+            overlay.BackgroundTransparency = 0.4
+            overlay.ZIndex = 10
+            overlay.Parent = itemCard
+            
+            local overlayCorner = Instance.new("UICorner")
+            overlayCorner.CornerRadius = UDim.new(0, 8)
+            overlayCorner.Parent = overlay
+
+            local msgLabel = Instance.new("TextLabel")
+            msgLabel.Size = UDim2.new(1, 0, 1, 0)
+            msgLabel.BackgroundTransparency = 1
+            msgLabel.Font = Enum.Font.FredokaOne
+            msgLabel.Text = "PRÓXIMAMENTE"
+            msgLabel.TextColor3 = Color3.new(1, 1, 1)
+            msgLabel.TextScaled = true
+            msgLabel.Rotation = -15
+            msgLabel.ZIndex = 11
+            msgLabel.Parent = overlay
+            
+            itemCard.AutoButtonColor = false
+        end
+
         if not template then
             itemCard.Text = item.Name .. "\n" .. item.Price .. " CR"
-            itemCard.BackgroundColor3 = item.Color or Color3.fromRGB(50, 50, 50)
+            itemCard.BackgroundColor3 = isImplemented and (item.Color or Color3.fromRGB(50, 50, 50)) or Color3.fromRGB(30, 30, 30)
             itemCard.BackgroundTransparency = 0.3
             itemCard.Font = Enum.Font.FredokaOne
-            itemCard.TextColor3 = Color3.new(1,1,1)
+            itemCard.TextColor3 = isImplemented and Color3.new(1,1,1) or Color3.fromRGB(150, 150, 150)
             itemCard.TextScaled = true
             
             local stroke = Instance.new("UIStroke")
-            stroke.Color = item.Color or Color3.new(1,1,1)
+            stroke.Color = isImplemented and (item.Color or Color3.new(1,1,1)) or Color3.fromRGB(80, 80, 80)
             stroke.Thickness = 2
             stroke.Parent = itemCard
             
             -- Direct Click Connection for Fallback Button
              itemCard.MouseButton1Click:Connect(function()
-                 print("DEBUG: CLICK DETECTED on Fallback Button for", item.Id)
-                 local success, msg = BuyItem:InvokeServer(item.Id)
-                 print("DEBUG: Purchase result:", success, msg)
+                 if not isImplemented then return end
+                 -- print("DEBUG: CLICK DETECTED on Fallback Button for", item.Id)
+                 local _success, _msg = BuyItem:InvokeServer(item.Id)
+                 -- print("DEBUG: Purchase result:", success, msg)
              end)
         else
             -- Data Binding
@@ -147,34 +195,45 @@ local function populateBoard(board)
                 local bg = itemCard:FindFirstChild("Background", true) or itemCard
                 local st = itemCard:FindFirstChildOfClass("UIStroke", true)
                 
-                if bg:IsA("GuiObject") then bg.BackgroundColor3 = item.Color end
-                if st then st.Color = item.Color end
+                if bg:IsA("GuiObject") then 
+                    bg.BackgroundColor3 = isImplemented and item.Color or Color3.fromRGB(40, 40, 40)
+                end
+                if st then 
+                    st.Color = isImplemented and item.Color or Color3.fromRGB(60, 60, 60)
+                end
             end
             
-            applyHoverEffect(buyBtn)
-            animateShine(buyBtn)
-            
-            buyBtn.MouseButton1Click:Connect(function()
-                -- print("DEBUG: CLICK DETECTED on Template Button for", item.Id)
-                local success, msg = BuyItem:InvokeServer(item.Id)
-                -- print("DEBUG: Purchase result:", success, msg)
+            if isImplemented then
+                applyHoverEffect(buyBtn)
+                animateShine(buyBtn)
                 
-                local originalText = buyBtn.Text
-                if success then
-                    buyBtn.Text = "¡COMPRADO!"
-                    buyBtn.TextColor3 = Color3.new(0, 1, 0)
-                else
-                    buyBtn.Text = msg or "ERROR"
-                    buyBtn.TextColor3 = Color3.new(1, 0, 0)
-                end
-                
-                task.delay(1, function()
-                    if buyBtn then
-                        buyBtn.Text = originalText
-                        buyBtn.TextColor3 = Color3.new(1, 1, 1) 
+                buyBtn.MouseButton1Click:Connect(function()
+                    -- print("DEBUG: CLICK DETECTED on Template Button for", item.Id)
+                    local success, msg = BuyItem:InvokeServer(item.Id)
+                    -- print("DEBUG: Purchase result:", success, msg)
+                    
+                    local originalText = buyBtn.Text
+                    if success then
+                        buyBtn.Text = "¡COMPRADO!"
+                        buyBtn.TextColor3 = Color3.new(0, 1, 0)
+                    else
+                        buyBtn.Text = msg or "ERROR"
+                        buyBtn.TextColor3 = Color3.new(1, 0, 0)
                     end
+                    
+                    task.delay(1, function()
+                        if buyBtn then
+                            buyBtn.Text = originalText
+                            buyBtn.TextColor3 = Color3.new(1, 1, 1) 
+                        end
+                    end)
                 end)
-            end)
+            else
+                if buyBtn:IsA("TextButton") then
+                    buyBtn.Text = "BLOQUEADO"
+                    buyBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+                end
+            end
         end
         
         itemCard.Parent = container
