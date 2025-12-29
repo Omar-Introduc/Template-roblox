@@ -23,7 +23,7 @@ return {
             Items = {
                 { Id = "Shield1", Name = "Escudo Fino", Price = 40, Color = Color3.fromRGB(255, 0, 100), Type = "Protect" },
                 { Id = "Heal", Name = "Botiquín", Price = 30, Color = Color3.fromRGB(100, 255, 100), Type = "Heal" },
-                { Id = "Immortality", Name = "Inmortal (5s)", Price = 500, Color = Color3.fromRGB(255, 215, 0), Type = "God" },
+                { Id = "Immortality", Name = "Inmortal (5s)", Price = 500, Color = Color3.fromRGB(255, 215, 0), Type = "God", Value = 5 },
             }
         },
         Economy = {

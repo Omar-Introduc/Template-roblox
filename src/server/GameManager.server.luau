@@ -58,7 +58,13 @@ local function otorgarPuntos(player: Player, platformName: string, position: Vec
 
 	local multiplicador = 1
 	if player.Character then
-		multiplicador = player.Character:GetAttribute("PointMultiplier") or 1
+		local buffEnd = player.Character:GetAttribute("Buff_Multiplier_End")
+		if buffEnd and os.time() < buffEnd then
+			multiplicador = player.Character:GetAttribute("PointMultiplier") or 1
+		else
+			-- Si expiró o no existe, aseguramos que sea 1 (opcional, pero limpio)
+			multiplicador = 1
+		end
 	end
 
 	local puntosAGanar = basePuntos * multiplicador
