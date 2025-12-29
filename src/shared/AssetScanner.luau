@@ -65,12 +65,13 @@ function AssetScanner.Init()
 		print("✅ [Scanner] Lobby vinculado.")
 	end
 
-	local shopsFound = {}
 	-- Buscar por TAG
+	local shopsFound = 0
 	for _, t in ipairs(CollectionService:GetTagged("TiendaTag")) do
 		if t:IsDescendantOf(workspace) then
 			print("🛍️ [Scanner] Tienda detectada por Tag: " .. t.Name)
-			table.insert(shopsFound, t)
+			MapManager.AddShopBoard(t)
+			shopsFound += 1
 
 			-- ESTÉTICA "VIDRIO" (Solo propiedades visuales)
 			local mainPart = t:IsA("BasePart") and t or (t:FindFirstChild("Display", true) or t.PrimaryPart or t:FindFirstChildWhichIsA("BasePart", true))
@@ -92,18 +93,18 @@ function AssetScanner.Init()
 	end
 
 	-- Fallback: Buscar por Nombre si no hay Tags
-	if #shopsFound == 0 then
+	if shopsFound == 0 then
 		local t = workspace:FindFirstChild("ShopBoard", true) or workspace:FindFirstChild("TiendaVisual", true)
 		if t then
 			print("🛍️ [Scanner] Tienda detectada por Nombre: " .. t.Name)
 			CollectionService:AddTag(t, "TiendaTag")
-			table.insert(shopsFound, t)
+			MapManager.AddShopBoard(t)
+			shopsFound += 1
 		end
 	end
 
-	if #shopsFound > 0 then
-		MapManager.SetShopBoard(shopsFound[1])
-		print("🚀 [Scanner] " .. #shopsFound .. " tienda(s) vinculada(s) exitosamente.")
+	if shopsFound > 0 then
+		print("🚀 [Scanner] " .. shopsFound .. " tienda(s) vinculada(s) exitosamente.")
 	else
 		warn("⚠️ [Scanner] No se detectaron tiendas. Asegúrate de poner el Tag 'TiendaTag' o el nombre 'ShopBoard'.")
 	end

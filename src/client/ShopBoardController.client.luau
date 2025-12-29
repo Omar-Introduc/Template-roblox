@@ -1,35 +1,16 @@
--- src/client/ShopController.client.luau
--- Ingeniero de UI/UX en Roblox (Nivel Experto)
--- VERSIÓN CANVAS FIJO (4 ITEMS) - Sin barra de desplazamiento
+-- src/client/ShopBoardController.client.luau
+-- Controlador de pantallas físicas (SurfaceGui) - VERSIÓN CANVAS FIJO (4 ITEMS)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-local Lighting = game:GetService("Lighting")
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 
 local Player = Players.LocalPlayer
-local PlayerGui = Player:WaitForChild("PlayerGui")
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 local BuyItem = ReplicatedStorage:WaitForChild("Events"):WaitForChild("BuyItem")
 
 local ShopUI_Folder = ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("ShopUI")
-
--- UI Refs
-local MainGui = PlayerGui:WaitForChild("MainGui", 10) or PlayerGui:FindFirstChildWhichIsA("ScreenGui")
-local ShopFrame = MainGui and MainGui:FindFirstChild("ShopFrame", true)
-local ScrollingFrame = ShopFrame and ShopFrame:FindFirstChild("ScrollingFrame", true)
-local CloseButton = ShopFrame and ShopFrame:FindFirstChild("CloseButton", true)
-
--- EFECTO BLUR REAL
-local blurEffect = Lighting:FindFirstChild("ShopBlur") or Instance.new("BlurEffect")
-blurEffect.Name = "ShopBlur"
-blurEffect.Size = 0
-blurEffect.Parent = Lighting
-
-local function toggleBlur(isFocused)
-    local targetSize = isFocused and 24 or 0
-    TweenService:Create(blurEffect, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = targetSize}):Play()
-end
 
 -- MICRO-INTERACCIONES
 local function applyHoverEffect(button)
@@ -55,41 +36,62 @@ local function animateShine(button)
             local tween = TweenService:Create(gradient, TweenInfo.new(1.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)})
             tween:Play()
             tween.Completed:Wait()
-            task.wait(2)
+            task.wait(3)
         end
     end)
 end
 
--- RENDERIZADO DE ÍTEMS (Canvas Fijo 2x2)
-local function renderShop()
-    if not ScrollingFrame then return end
+-- POBLAR UNA PANTALLA (SIN BARRA DE DESPLAZAMIENTO)
+local function populateBoard(board)
+    local sg = board:FindFirstChild("ShopSurfaceUI") or board:FindFirstChildOfClass("SurfaceGui") or Instance.new("SurfaceGui")
+    sg.Name = "ShopSurfaceUI"
+    sg.Face = Enum.NormalId.Front
+    sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+    sg.PixelsPerStud = 50
+    sg.Parent = board
     
-    -- Configurar el ScrollingFrame como si fuera un Frame fijo (sin scroll)
-    ScrollingFrame.ScrollingEnabled = false
-    ScrollingFrame.ScrollBarThickness = 0
-    ScrollingFrame:ClearAllChildren()
+    sg:ClearAllChildren()
     
-    local gridLayout = ScrollingFrame:FindFirstChildOfClass("UIGridLayout") or Instance.new("UIGridLayout", ScrollingFrame)
-    gridLayout.CellSize = UDim2.new(0.48, 0, 0.48, 0) -- 2x2
+    -- Usamos un FRAME normal en lugar de ScrollingFrame para un canvas fijo
+    local container = Instance.new("Frame")
+    container.Name = "ItemsContainer"
+    container.Size = UDim2.new(1, -20, 1, -20)
+    container.Position = UDim2.new(0.5, 0, 0.5, 0)
+    container.AnchorPoint = Vector2.new(0.5, 0.5)
+    container.BackgroundTransparency = 1 -- Fondo transparente para efecto Glassmorphism del board
+    container.Parent = sg
+    
+    local gridLayout = Instance.new("UIGridLayout")
+    -- Ajustado para 2x2 en un canvas fijo
+    gridLayout.CellSize = UDim2.new(0.48, 0, 0.48, 0)
     gridLayout.CellPadding = UDim2.new(0.04, 0, 0.04, 0)
     gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     gridLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    gridLayout.Parent = container
+
+    local categoryKey = board:GetAttribute("Category")
+    local category = ShopConfig.Categories[categoryKey]
     
-    local template = (ShopUI_Folder and ShopUI_Folder:FindFirstChild("ItemTemplate"))
-    
-    -- Solo mostramos una categoría o un mix de 4 ítems para mantener el canvas fijo
     local itemsToDisplay = {}
-    local count = 0
-    for _, category in pairs(ShopConfig.Categories) do
-        for _, item in ipairs(category.Items) do
-            table.insert(itemsToDisplay, item)
-            count += 1
+    if category then
+        itemsToDisplay = category.Items
+    else
+        -- Fallback: Primeras 4 cosas que encuentre
+        local count = 0
+        for _, cat in pairs(ShopConfig.Categories) do
+            for _, item in ipairs(cat.Items) do
+                table.insert(itemsToDisplay, item)
+                count += 1
+                if count >= 4 then break end
+            end
             if count >= 4 then break end
         end
-        if count >= 4 then break end
     end
-    
-    for _, item in ipairs(itemsToDisplay) do
+
+    local template = (ShopUI_Folder and ShopUI_Folder:FindFirstChild("ItemTemplate"))
+
+    for i = 1, math.min(#itemsToDisplay, 4) do
+        local item = itemsToDisplay[i]
         local itemCard = template and template:Clone() or Instance.new("TextButton")
         itemCard.Name = item.Id
         
@@ -97,8 +99,16 @@ local function renderShop()
             itemCard.Text = item.Name .. "\n" .. item.Price .. " CR"
             itemCard.BackgroundColor3 = item.Color or Color3.fromRGB(50, 50, 50)
             itemCard.BackgroundTransparency = 0.3
+            itemCard.Font = Enum.Font.FredokaOne
+            itemCard.TextColor3 = Color3.new(1,1,1)
             itemCard.TextScaled = true
+            
+            local stroke = Instance.new("UIStroke")
+            stroke.Color = item.Color or Color3.new(1,1,1)
+            stroke.Thickness = 2
+            stroke.Parent = itemCard
         else
+            -- Data Binding
             local titleLabel = itemCard:FindFirstChild("ItemName", true)
             local priceLabel = itemCard:FindFirstChild("Price", true)
             local buyBtn = itemCard:FindFirstChild("BuyButton", true) or itemCard
@@ -109,8 +119,8 @@ local function renderShop()
             if item.Color then
                 local bg = itemCard:FindFirstChild("Background", true) or itemCard
                 bg.BackgroundColor3 = item.Color
-                local stroke = itemCard:FindFirstChildOfClass("UIStroke", true)
-                if stroke then stroke.Color = item.Color end
+                local st = itemCard:FindFirstChildOfClass("UIStroke", true)
+                if st then st.Color = item.Color end
             end
             
             applyHoverEffect(buyBtn)
@@ -120,28 +130,30 @@ local function renderShop()
                 BuyItem:InvokeServer(item.Id)
             end)
         end
-        itemCard.Parent = ScrollingFrame
+        
+        itemCard.Parent = container
     end
 end
 
-local function openShop()
-    if not ShopFrame then return end
-    ShopFrame.Visible = true
-    toggleBlur(true)
-    renderShop()
+-- INICIAR
+local function discoverAndPopulate()
+    local tagged = CollectionService:GetTagged("TiendaTag")
+    for _, board in ipairs(tagged) do
+        task.spawn(populateBoard, board)
+    end
     
-    ShopFrame.Size = UDim2.new(0, 0, 0, 0)
-    TweenService:Create(ShopFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 600, 0, 400)}):Play()
+    -- Fallback por nombre
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if (obj.Name == "ShopBoard" or obj.Name == "TiendaVisual") and not CollectionService:HasTag(obj, "TiendaTag") then
+            task.spawn(populateBoard, obj)
+        end
+    end
 end
 
-local function closeShop()
-    if not ShopFrame then return end
-    toggleBlur(false)
-    local tween = TweenService:Create(ShopFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 0)})
-    tween:Play()
-    tween.Completed:Connect(function() ShopFrame.Visible = false end)
-end
+task.wait(2)
+discoverAndPopulate()
 
-if CloseButton then CloseButton.MouseButton1Click:Connect(closeShop) end
-
-print("✨ [Client] ShopController (Fijo) cargado.")
+CollectionService:GetInstanceAddedSignal("TiendaTag"):Connect(function(instance)
+    task.wait(0.5)
+    populateBoard(instance)
+end)

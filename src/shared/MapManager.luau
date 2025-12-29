@@ -3,7 +3,7 @@ local MapManager = {}
 
 MapManager.References = {
     Lobby = nil,
-    ShopBoard = nil,
+    ShopBoards = {},
     Platforms = {}, 
 }
 
@@ -12,9 +12,11 @@ function MapManager.SetLobby(obj)
     MapManager.References.Lobby = obj
 end
 
--- Guardar la Tienda
-function MapManager.SetShopBoard(obj)
-    MapManager.References.ShopBoard = obj
+-- Añadir una Tienda al registro
+function MapManager.AddShopBoard(obj)
+    if not table.find(MapManager.References.ShopBoards, obj) then
+        table.insert(MapManager.References.ShopBoards, obj)
+    end
 end
 
 -- Añadir plataforma y mantener el orden numérico por nombre
