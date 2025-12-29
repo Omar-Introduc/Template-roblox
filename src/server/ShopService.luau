@@ -27,17 +27,22 @@ function ShopService.ApplyEffect(character, item)
 		humanoid.UseJumpPower = true
 		character:SetAttribute("Buff_JumpPower", value)
 	elseif itemType == "Gravity" then
-		-- Efecto de gravedad baja
+		-- Efecto de gravedad baja usando VectorForce (Moderno)
 		local hrp = character:FindFirstChild("HumanoidRootPart")
 		if hrp then
-			-- Limpiar fuerza anterior si existe
-			local oldForce = hrp:FindFirstChild("LowGravForce")
-			if oldForce then oldForce:Destroy() end
+			-- Limpiar attachment/fuerza anterior si existe
+			local oldAtt = hrp:FindFirstChild("GravityAttachment")
+			if oldAtt then oldAtt:Destroy() end
 
-			local force = Instance.new("BodyForce")
+			local att = Instance.new("Attachment")
+			att.Name = "GravityAttachment"
+			att.Parent = hrp
+
+			local force = Instance.new("VectorForce")
 			force.Name = "LowGravForce"
-			-- Value = 0.4 (Target Gravity). Uplift = 1 - 0.4 = 0.6
+			force.Attachment0 = att
 			force.Force = Vector3.new(0, hrp:GetMass() * workspace.Gravity * (1 - value), 0)
+			force.RelativeTo = Enum.ActuatorRelativeTo.World
 			force.Parent = hrp
 
 			-- Duración 30s
@@ -50,6 +55,8 @@ function ShopService.ApplyEffect(character, item)
 					if hrp then
 						local f = hrp:FindFirstChild("LowGravForce")
 						if f then f:Destroy() end
+						local a = hrp:FindFirstChild("GravityAttachment")
+						if a then a:Destroy() end
 					end
 				end
 			end)
@@ -90,7 +97,7 @@ function ShopService.ApplyEffect(character, item)
 			end
 		end)
 	elseif itemType == "DoubleJump" then
-		-- Double Jump (Permanente hasta morir)
+		-- Double Jump (Permanente)
 		character:SetAttribute("Buff_DoubleJump", true)
 	elseif itemType == "Multiplier" then
 		-- Multiplier
@@ -122,6 +129,13 @@ function ShopService.ProcessPurchase(player, itemId)
 
 	if not itemData then return false, "Error" end
 
+	-- Verificar si ya lo tiene (si es permanente)
+	if itemData.Id == "DoubleJump" then
+		if player:GetAttribute("Owns_DoubleJump") == true then
+			return false, "Ya lo tienes"
+		end
+	end
+
 	-- Support both 'Points' (from old scripts) and 'CR' (from newer scripts) for money
 	local leaderstats = player:FindFirstChild("leaderstats")
 	if not leaderstats then return false, "No leaderstats" end
@@ -133,6 +147,11 @@ function ShopService.ProcessPurchase(player, itemId)
 	end
 
 	moneyStat.Value = moneyStat.Value - itemData.Price
+
+	-- Marcar propiedad permanente en el Player para que DataService lo guarde
+	if itemData.Id == "DoubleJump" then
+		player:SetAttribute("Owns_DoubleJump", true)
+	end
 
 	local character = player.Character
 	if character then

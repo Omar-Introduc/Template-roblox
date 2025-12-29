@@ -12,9 +12,6 @@ local BuyItemFunction = Events:WaitForChild("BuyItem")
 local ShopConfig = require(ReplicatedStorage.Shared.ShopConfig)
 
 -- Referencia al Prefab ya existente (que creaste con el Builder)
--- Asumimos que el UI ya está en PlayerGui porque lo pusiste en StarterGui
--- NOTA: Si este WaitForChild se queda pegado, es porque no has corrido el Builder
--- y movido el resultado a StarterGui.
 local shopUI = PlayerGui:WaitForChild("ShopUI_Prefab", 5)
 
 if not shopUI then
@@ -37,6 +34,19 @@ local function setupItemLogic(itemFrame, itemData)
 			print("Compra exitosa!")
 		else
 			warn("Fallo: " .. msg)
+			-- Feedback visual de error
+			local originalText = buyBtn.Text
+			local originalColor = buyBtn.TextColor3
+
+			buyBtn.Text = "SIN SALDO" -- O "ERROR"
+			buyBtn.TextColor3 = Color3.fromRGB(255, 0, 0) -- Rojo
+
+			task.delay(1, function()
+				if buyBtn then
+					buyBtn.Text = originalText
+					buyBtn.TextColor3 = originalColor
+				end
+			end)
 		end
 	end)
 end
@@ -80,10 +90,5 @@ end
 -- Inicialización
 populateShop()
 toggleShop(false) -- Empezar cerrado
-
--- Escuchar eventos para abrir la tienda (si existieran)
--- Por ahora, dejaremos que otro script controle la visibilidad si es necesario,
--- o agregamos un botón de apertura si el usuario lo requiere.
--- En la versión anterior había un 'ShopBoardController' que probablemente maneje la apertura.
 
 print("✨ [Client] ShopController (Limpio) cargado.")
