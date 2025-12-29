@@ -2,6 +2,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
+print("📥 [Client] PointFeedback.client.luau cargado.")
 
 local PointAwarded = ReplicatedStorage:WaitForChild("Events"):WaitForChild("PointAwarded")
 
@@ -16,10 +17,10 @@ local currentColorIndex = 1
 local function createFloatingText(amount, position)
     local bb = Instance.new("BillboardGui")
     bb.Name = "PointFeedback"
-    bb.Size = UDim2.new(0, 100, 0, 50)
+    bb.Size = UDim2.new(0, 200, 0, 100) -- Tamaño duplicado
     bb.Adornee = nil 
     bb.AlwaysOnTop = true
-    bb.StudsOffset = Vector3.new(0, 2, 0)
+    bb.StudsOffset = Vector3.new(0, 3, 0) -- Un poco más arriba por el tamaño
     
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
@@ -67,5 +68,6 @@ local function createFloatingText(amount, position)
 end
 
 PointAwarded.OnClientEvent:Connect(function(amount, position)
+    if not amount or not position then return end
     task.spawn(createFloatingText, amount, position)
 end)

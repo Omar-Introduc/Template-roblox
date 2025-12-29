@@ -37,7 +37,10 @@ else
     end
 end
 
-local PointAwarded = ReplicatedStorage:WaitForChild("Events"):WaitForChild("PointAwarded")
+local PointAwarded = ReplicatedStorage:WaitForChild("Events"):FindFirstChild("PointAwarded")
+if not PointAwarded then
+    warn("⚠️ [GameLoop] 'PointAwarded' RemoteEvent no encontrado en ReplicatedStorage/Events!")
+end
 
 local activatePlatformLogic 
 
@@ -133,8 +136,9 @@ local function createCountdown(parentPart)
 end
 
 local function otorgarPuntos(player, platformName, position)
-    local nPlataforma = tonumber(string.match(platformName, "%d+")) or 1
-    local basePuntos = CONFIG.PUNTOS_BASE + (nPlataforma - 1)
+    -- Intentar extraer el número de la plataforma (ej: "Plataforma_5" -> 5)
+    local nPlataforma = tonumber(string.match(platformName, "_(%d+)")) or 1
+    local basePuntos = nPlataforma -- Simplificado: Plataforma 1 = 1 punto, Plataforma 2 = 2 puntos, etc.
     
     local multiplicador = 1
     if player.Character then
@@ -143,6 +147,10 @@ local function otorgarPuntos(player, platformName, position)
     
     local puntosAGanar = basePuntos * multiplicador
     
+    -- DEBUG: Verificar valores en el servidor
+    print(string.format("DEBUG: otorgarPuntos -> Player: %s, Platform: %s, nPlataforma: %d, basePuntos: %d, Final: %d", 
+        player.Name, platformName, nPlataforma, basePuntos, puntosAGanar))
+
     local leaderstats = player:FindFirstChild("leaderstats")
     if leaderstats then
         local cr = leaderstats:FindFirstChild("CR")
@@ -219,7 +227,7 @@ activatePlatformLogic = function(platform)
     connection = mainPart.Touched:Connect(function(hit)
         if platform:GetAttribute("Triggered") then return end
         local character = hit.Parent
-        local humanoid = character and character:FindFirstChild("Humanoid")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         if not humanoid then return end
 
         local player = Players:GetPlayerFromCharacter(character)
@@ -229,15 +237,46 @@ activatePlatformLogic = function(platform)
         platform:SetAttribute("Triggered", true)
         spawnNext(platform)
 
-        -- INICIO DE BUCLE DE PUNTOS CONTINUOS (Seguro)
+        -- OTORGAR PRIMER PUNTO INMEDIATAMENTE
+        otorgarPuntos(player, platform.Name, mainPart.Position)
+
+        -- INICIO DE BUCLE DE PUNTOS CONTINUOS (Reforzado)
         task.spawn(function()
-            while humanoid and humanoid.Parent and mainPart and mainPart.Parent do
-                -- Verificación segura de FloorPart (evita el error 'not a valid member')
-                local success, currentFloor = pcall(function() return humanoid.FloorPart end)
-                if not success or currentFloor ~= mainPart then break end
-                
-                otorgarPuntos(player, platform.Name, mainPart.Position)
+            while player and character and humanoid and humanoid.Parent and mainPart and mainPart.Parent do
                 task.wait(0.5)
+                
+                local isStanding = false
+                
+                -- Intento 1: FloorPart (con pcall por errores de membresía)
+                local success, floor = pcall(function() return humanoid.FloorPart end)
+                if success and floor and (floor == mainPart or floor:IsDescendantOf(platform)) then
+                    isStanding = true
+                end
+                
+                -- Intento 2: Raycast fallback
+                if not isStanding then
+                    local hrp = character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local params = RaycastParams.new()
+                        params.FilterDescendantsInstances = {character}
+                        params.FilterType = Enum.RaycastFilterType.Exclude
+                        local res = workspace:Raycast(hrp.Position, Vector3.new(0, -10, 0), params)
+                        if res and (res.Instance == mainPart or res.Instance:IsDescendantOf(platform)) then
+                            isStanding = true
+                        end
+                    end
+                end
+
+                if isStanding then
+                    otorgarPuntos(player, platform.Name, mainPart.Position)
+                else
+                    -- Breve espera extra antes de romper el loop para tolerar saltos
+                    task.wait(0.3)
+                    local s2, f2 = pcall(function() return humanoid.FloorPart end)
+                    if not (s2 and f2 and (f2 == mainPart or f2:IsDescendantOf(platform))) then
+                        break 
+                    end
+                end
             end
         end)
 
