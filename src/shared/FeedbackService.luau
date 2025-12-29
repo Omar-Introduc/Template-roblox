@@ -1,6 +1,11 @@
 --!strict
 local FeedbackService = {}
 
+-- Tipado Estricto
+type BindableEvent = Instance & {
+	Event: RBXScriptSignal
+}
+
 function FeedbackService.CreateCountdown(parentPart: BasePart, duration: number)
 	local sg = Instance.new("SurfaceGui")
 	sg.Name = "CountdownGui"
@@ -29,6 +34,17 @@ function FeedbackService.CreateCountdown(parentPart: BasePart, duration: number)
 	end)
 
 	return sg
+end
+
+-- Inicialización y Escucha de Eventos (Observer Pattern)
+function FeedbackService.Init(platformTriggeredEvent: RBXScriptSignal)
+	platformTriggeredEvent:Connect(function(platform: Instance, duration: number)
+		local mainPart = platform:IsA("Model") and platform.PrimaryPart or platform
+		if mainPart and mainPart:IsA("BasePart") then
+			FeedbackService.CreateCountdown(mainPart, duration)
+		end
+	end)
+	print("✅ [FeedbackService] Listening to PlatformTriggered event.")
 end
 
 return FeedbackService

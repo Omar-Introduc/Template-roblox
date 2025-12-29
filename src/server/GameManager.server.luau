@@ -9,14 +9,25 @@ local MovementService = require(Shared:WaitForChild("MovementService"))
 local PlatformSpawner = require(Shared:WaitForChild("PlatformSpawner"))
 local FeedbackService = require(Shared:WaitForChild("FeedbackService"))
 local AssetScanner = require(Shared:WaitForChild("AssetScanner"))
+local GameConfig = require(Shared:WaitForChild("GameConfig"))
 
--- Configuración
-local CONFIG = {
-	COUNTDOWN_TIME = 3,
-	FALL_DELAY = 2,
-	RESET_DELAY = 5,
-	TAG_PLATFORMA = "PlataformaCaida",
-}
+-- Event System Setup (Decoupling)
+local EventsFolder = ReplicatedStorage:FindFirstChild("Events")
+if not EventsFolder then
+	EventsFolder = Instance.new("Folder")
+	EventsFolder.Name = "Events"
+	EventsFolder.Parent = ReplicatedStorage
+end
+
+local PlatformTriggered = EventsFolder:FindFirstChild("PlatformTriggered") --[[@as BindableEvent]]
+if not PlatformTriggered then
+	PlatformTriggered = Instance.new("BindableEvent")
+	PlatformTriggered.Name = "PlatformTriggered"
+	PlatformTriggered.Parent = EventsFolder
+end
+
+-- Inicializar UI Service (FeedbackService) para escuchar eventos
+FeedbackService.Init(PlatformTriggered.Event)
 
 -- Inicializar Mapa
 AssetScanner.Init()
@@ -36,7 +47,7 @@ else
 end
 
 -- Eventos
-local PointAwarded = ReplicatedStorage:WaitForChild("Events"):FindFirstChild("PointAwarded") --[[@as RemoteEvent]]
+local PointAwarded = EventsFolder:FindFirstChild("PointAwarded") --[[@as RemoteEvent]]
 if not PointAwarded then
 	warn("⚠️ [GameManager] 'PointAwarded' RemoteEvent no encontrado en ReplicatedStorage/Events!")
 end
@@ -91,7 +102,6 @@ local function handlePlatformTouch(platform: Instance, mainPart: BasePart)
 		otorgarPuntos(player, platform.Name, mainPart.Position)
 
 		-- 4. Iniciar loop de puntos continuos (opcional, lógica de negocio)
-		-- Para mantener la lógica original, replicamos el loop de puntos.
 		task.spawn(function()
 			while player and character and humanoid and humanoid.Parent and mainPart and mainPart.Parent do
 				task.wait(0.5)
@@ -134,13 +144,11 @@ local function handlePlatformTouch(platform: Instance, mainPart: BasePart)
 			return -- Plataforma inicial no cae
 		end
 
-		-- 5. Feedback Visual (Countdown)
-		FeedbackService.CreateCountdown(mainPart, CONFIG.COUNTDOWN_TIME)
+		-- 5. Feedback Visual (Countdown) - USANDO EVENTO
+		PlatformTriggered:Fire(platform, GameConfig.COUNTDOWN_TIME)
 
-		-- Esperar cuenta regresiva (esto bloquea el thread de este evento, pero está bien en un connect?)
-		-- Mejor hacerlo en un spawn o esperar aquí ya que Touched es asíncrono pero queremos secuencia.
-		-- El CreateCountdown es asíncrono, así que esperamos el tiempo manualmente aquí para sincronizar la caída.
-		task.wait(CONFIG.COUNTDOWN_TIME)
+		-- Esperar cuenta regresiva
+		task.wait(GameConfig.COUNTDOWN_TIME)
 
 		-- 6. Caída
 		MovementService.StopMovement(platform)
@@ -152,7 +160,7 @@ local function handlePlatformTouch(platform: Instance, mainPart: BasePart)
 		if connection then connection:Disconnect() end
 
 		-- 7. Reset / Reactivar después de caer
-		task.delay(CONFIG.FALL_DELAY + CONFIG.RESET_DELAY, function()
+		task.delay(GameConfig.FALL_DELAY + GameConfig.RESET_DELAY, function()
 			activatePlatform(platform)
 		end)
 	end)
@@ -183,16 +191,6 @@ activatePlatform = function(platform: Instance)
 	platform:PivotTo(pivotBase)
 
 	platform:SetAttribute("Triggered", false)
-	-- Restore color? Original code didn't restore color explicitly except imply it from template/beautifier?
-	-- Wait, original code said: "Se ELIMINÓ la línea que cambiaba el color a gris".
-	-- So we just leave it? But it turned Black when falling. We should probably restore it to white/default if we reuse it.
-	-- Let's restore to a default color or rely on Beautifier?
-	-- Beautifier applies style based on name.
-	-- However, if we turned it Black (0,0,0), we might want to reset it.
-	-- I'll set it to grey/white just in case, or leave it if Beautifier handles it.
-	-- The original `activatePlatformLogic` didn't seem to reset color explicitly in the provided snippet?
-	-- Ah, "Se ELIMINÓ la línea...". So maybe it stays black? No, that would be weird.
-	-- I'll assume it should be reset.
 	mainPart.Color = Color3.fromRGB(163, 162, 165) -- Default grey-ish
 
 	if platform.Name ~= "Plataforma_1" then
@@ -222,11 +220,11 @@ Players.PlayerAdded:Connect(function(player)
 end)
 
 -- Inicializar plataformas existentes
-for _, platform in ipairs(CollectionService:GetTagged(CONFIG.TAG_PLATFORMA)) do
+for _, platform in ipairs(CollectionService:GetTagged(GameConfig.TAG_PLATFORMA)) do
 	activatePlatform(platform)
 end
 
-CollectionService:GetInstanceAddedSignal(CONFIG.TAG_PLATFORMA):Connect(function(instance)
+CollectionService:GetInstanceAddedSignal(GameConfig.TAG_PLATFORMA):Connect(function(instance)
 	task.wait(0.1)
 	activatePlatform(instance)
 end)
