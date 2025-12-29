@@ -15,7 +15,13 @@ local ShopConfig = require(ReplicatedStorage.Shared.ShopConfig)
 -- Asumimos que el UI ya está en PlayerGui porque lo pusiste en StarterGui
 -- NOTA: Si este WaitForChild se queda pegado, es porque no has corrido el Builder
 -- y movido el resultado a StarterGui.
-local shopUI = PlayerGui:WaitForChild("ShopUI_Prefab")
+local shopUI = PlayerGui:WaitForChild("ShopUI_Prefab", 5)
+
+if not shopUI then
+	warn("⚠️ [ShopController] 'ShopUI_Prefab' no encontrado en PlayerGui. Ejecuta 'MasterBuilder' para generarlo.")
+	return
+end
+
 local mainFrame = shopUI:WaitForChild("MainFrame")
 local container = mainFrame:WaitForChild("ItemsContainer")
 local closeBtn = mainFrame:FindFirstChild("CloseButton")

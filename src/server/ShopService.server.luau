@@ -36,8 +36,19 @@ local function applyItemEffect(character, item)
 			force.Force = Vector3.new(0, hrp:GetMass() * workspace.Gravity * (1 - value), 0)
 			force.Parent = hrp
 
-			-- Duración 30s (Hardcoded por compatibilidad histórica/lógica anterior, o podría ser atributo)
-			character:SetAttribute("Buff_Gravity_End", now + 30)
+			-- Duración 30s
+			local duration = 30
+			character:SetAttribute("Buff_Gravity_End", now + duration)
+
+			task.delay(duration, function()
+				if character and character:IsDescendantOf(workspace) then
+					character:SetAttribute("Buff_Gravity_End", nil)
+					if hrp then
+						local f = hrp:FindFirstChild("LowGravForce")
+						if f then f:Destroy() end
+					end
+				end
+			end)
 		end
 	elseif itemType == "Protect" then
 		character:SetAttribute("HasShield", true)
@@ -56,10 +67,24 @@ local function applyItemEffect(character, item)
 		ff.Name = "GodModeFF"
 		ff.Visible = true
 		ff.Parent = character
+
+		task.delay(duration, function()
+			if character and character:IsDescendantOf(workspace) then
+				character:SetAttribute("Buff_God_End", nil)
+				local currentFF = character:FindFirstChild("GodModeFF")
+				if currentFF then currentFF:Destroy() end
+			end
+		end)
 	elseif itemType == "Fly" then
 		-- Fly
 		local duration = value > 0 and value or 10
 		character:SetAttribute("Buff_Fly_End", now + duration)
+
+		task.delay(duration, function()
+			if character and character:IsDescendantOf(workspace) then
+				character:SetAttribute("Buff_Fly_End", nil)
+			end
+		end)
 	elseif itemType == "DoubleJump" then
 		-- Double Jump (Permanente hasta morir)
 		character:SetAttribute("Buff_DoubleJump", true)
@@ -68,6 +93,13 @@ local function applyItemEffect(character, item)
 		local duration = 60 -- 1 minuto
 		character:SetAttribute("PointMultiplier", value)
 		character:SetAttribute("Buff_Multiplier_End", now + duration)
+
+		task.delay(duration, function()
+			if character and character:IsDescendantOf(workspace) then
+				character:SetAttribute("PointMultiplier", 1)
+				character:SetAttribute("Buff_Multiplier_End", nil)
+			end
+		end)
 	end
 end
 
@@ -105,46 +137,4 @@ end
 
 BuyItemFunction.OnServerInvoke = onBuyItem
 
--- Loop para limpiar buffs expirados
-task.spawn(function()
-	while true do
-		local now = os.time()
-		for _, player in ipairs(Players:GetPlayers()) do
-			local character = player.Character
-			if character then
-				-- Check God Mode
-				local godEnd = character:GetAttribute("Buff_God_End")
-				if godEnd and now > godEnd then
-					character:SetAttribute("Buff_God_End", nil)
-					local ff = character:FindFirstChild("GodModeFF")
-					if ff then ff:Destroy() end
-				end
-
-				-- Check Fly (Client handles mechanics, Server just cleans attribute)
-				local flyEnd = character:GetAttribute("Buff_Fly_End")
-				if flyEnd and now > flyEnd then
-					character:SetAttribute("Buff_Fly_End", nil)
-				end
-
-				-- Check Multiplier
-				local multEnd = character:GetAttribute("Buff_Multiplier_End")
-				if multEnd and now > multEnd then
-					character:SetAttribute("Buff_Multiplier_End", nil)
-					character:SetAttribute("PointMultiplier", 1)
-				end
-
-				-- Check Gravity
-				local gravEnd = character:GetAttribute("Buff_Gravity_End")
-				if gravEnd and now > gravEnd then
-					character:SetAttribute("Buff_Gravity_End", nil)
-					local hrp = character:FindFirstChild("HumanoidRootPart")
-					if hrp then
-						local f = hrp:FindFirstChild("LowGravForce")
-						if f then f:Destroy() end
-					end
-				end
-			end
-		end
-		task.wait(0.5)
-	end
-end)
+-- Loop para limpiar buffs expirados ELIMINADO en favor de task.delay en applyItemEffect
