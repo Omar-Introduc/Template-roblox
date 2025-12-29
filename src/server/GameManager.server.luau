@@ -33,6 +33,14 @@ if not RequestPointsEvent then
 	RequestPointsEvent.Parent = EventsFolder
 end
 
+-- Rate Limiting System
+local COOLDOWN_TIME = 0.5
+local lastPointRequest = {} -- [Player] = { [PlatformInstance] = timestamp }
+
+Players.PlayerRemoving:Connect(function(player)
+	lastPointRequest[player] = nil
+end)
+
 -- Inicializar UI Service (FeedbackService) para escuchar eventos
 FeedbackService.Init(PlatformTriggered.Event)
 
@@ -87,6 +95,21 @@ end
 -- Validate Request Points from Client
 RequestPointsEvent.OnServerEvent:Connect(function(player: Player, platform: Instance)
 	if not platform or not platform:IsA("Model") and not platform:IsA("BasePart") then return end
+
+	-- 1. Rate Limiting Check
+	if not lastPointRequest[player] then
+		lastPointRequest[player] = {}
+	end
+
+	local lastTime = lastPointRequest[player][platform]
+	local now = os.clock()
+
+	if lastTime and (now - lastTime < COOLDOWN_TIME) then
+		-- Rate limit hit, ignore request silently or warn
+		return
+	end
+
+	lastPointRequest[player][platform] = now
 
 	local character = player.Character
 	if not character then return end
