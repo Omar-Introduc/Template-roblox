@@ -99,7 +99,7 @@ local function RunTests()
 		} :: any)
 
 		-- Test 2.1: Buy with 0 money
-		local s1, res1 = pcall(function() return ShopService.ProcessPurchase(mockPlayer, "Movement_SpeedSmall") end)
+		local s1, res1 = pcall(function() return ShopService.ProcessPurchase(mockPlayer, "Speed1") end)
 		if s1 and not res1 then 
 			TestService:Check(true, "✅ Purchase Blocked (Insufficient Funds)")
 		elseif not s1 then
@@ -110,7 +110,7 @@ local function RunTests()
 
 		-- Test 2.2: Buy with money
 		points.Value = 1000
-		local s2, res2 = pcall(function() return ShopService.ProcessPurchase(mockPlayer, "Movement_SpeedSmall") end)
+		local s2, res2 = pcall(function() return ShopService.ProcessPurchase(mockPlayer, "Speed1") end)
 		if s2 and res2 then
 			TestService:Check(true, "✅ Purchase Successful")
 			TestService:Check(points.Value < 1000, "✅ Money Deducted")

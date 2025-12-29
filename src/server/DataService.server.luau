@@ -1,8 +1,8 @@
 -- src/server/DataService.server.luau
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
-local ServerScriptService = game:GetService("ServerScriptService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local _ServerScriptService = game:GetService("ServerScriptService")
+local _ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Intentamos requerir ShopService para re-aplicar efectos permanentes
 -- Asumimos que está en src/server (ServerScriptService en runtime si está allí)
@@ -24,7 +24,24 @@ task.spawn(function()
 end)
 
 local DATA_VERSION = "v1"
-local playerDataStore = DataStoreService:GetDataStore("ParkourGameData_" .. DATA_VERSION)
+local playerDataStore
+local isOfflineMode = false
+
+local successDS, resultDS = pcall(function()
+	return DataStoreService:GetDataStore("ParkourGameData_" .. DATA_VERSION)
+end)
+
+if successDS and resultDS then
+	playerDataStore = resultDS
+else
+	warn("⚠️ DataStoreService no disponible (Offline Mode). Los datos no se guardarán permanentemente.")
+	isOfflineMode = true
+	-- Mock minimalistico para evitar errores de null
+	playerDataStore = {
+		GetAsync = function(_self, _key) return nil end,
+		UpdateAsync = function(_self, _key, callback) return callback(nil) end
+	}
+end
 
 local SESSION_CACHE = {}
 
@@ -159,14 +176,21 @@ local function onCharacterAdded(character)
 end
 
 -- Eventos
-Players.PlayerAdded:Connect(function(player)
+local function onPlayerAdded(player)
 	loadData(player)
 	player.CharacterAdded:Connect(onCharacterAdded)
 	-- Si el personaje ya cargó antes del script
 	if player.Character then
 		onCharacterAdded(player.Character)
 	end
-end)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+-- Manejar jugadores que ya están dentro (Studio Race Condition)
+for _, player in ipairs(Players:GetPlayers()) do
+	task.spawn(function() onPlayerAdded(player) end)
+end
 
 Players.PlayerRemoving:Connect(function(player)
 	saveData(player)

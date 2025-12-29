@@ -18,12 +18,12 @@ local function updatePlatform(platform: Instance)
 	-- Check if movement is active
 	if not platform:GetAttribute("MovementActive") then return end
 
-	local startTime = platform:GetAttribute("MovementStartTime")
-	local originX = platform:GetAttribute("MovementOriginX")
-	local originY = platform:GetAttribute("MovementOriginY")
-	local centerZ = platform:GetAttribute("MovementCenterZ")
-	local amplitude = platform:GetAttribute("MovementAmplitude")
-	local speed = platform:GetAttribute("MovementSpeed")
+	local startTime = platform:GetAttribute("MovementStartTime") :: number?
+	local originX = platform:GetAttribute("MovementOriginX") :: number?
+	local originY = platform:GetAttribute("MovementOriginY") :: number?
+	local centerZ = platform:GetAttribute("MovementCenterZ") :: number?
+	local amplitude = platform:GetAttribute("MovementAmplitude") :: number?
+	local speed = platform:GetAttribute("MovementSpeed") :: number?
 
 	if not (startTime and originX and originY and centerZ and amplitude and speed) then return end
 
@@ -59,16 +59,18 @@ task.spawn(function()
 			-- Wrap in pcall as FloorPart can be tricky or restricted sometimes
 			local success, floor = pcall(function() return humanoid.FloorPart end)
 			if success and floor then
-				-- Find the model (Platform) from the part
-				local model = floor:FindFirstAncestorWhichIsA("Model")
-				if model and CollectionService:HasTag(model, GameConfig.TAG_PLATFORMA) then
-					foundPlatform = model
-				elseif floor and CollectionService:HasTag(floor, GameConfig.TAG_PLATFORMA) then
-					foundPlatform = floor
+				-- Recursive search for tag in ancestors
+				local current = floor
+				while current and current ~= workspace do
+					if CollectionService:HasTag(current, GameConfig.TAG_PLATFORMA) then
+						foundPlatform = current
+						break
+					end
+					current = current.Parent
 				end
 			end
-
-			-- 2. Raycast fallback if no floor detected (e.g. slight jump or edge case)
+			
+			-- Retry with Raycast hit if still not found
 			if not foundPlatform then
 				local params = RaycastParams.new()
 				params.FilterDescendantsInstances = {character}
@@ -76,18 +78,30 @@ task.spawn(function()
 				local res = workspace:Raycast(rootPart.Position, Vector3.new(0, -10, 0), params)
 
 				if res and res.Instance then
-					local hit = res.Instance
-					local model = hit:FindFirstAncestorWhichIsA("Model")
-					if model and CollectionService:HasTag(model, GameConfig.TAG_PLATFORMA) then
-						foundPlatform = model
-					elseif CollectionService:HasTag(hit, GameConfig.TAG_PLATFORMA) then
-						foundPlatform = hit
+					local current = res.Instance
+					while current and current ~= workspace do
+						if CollectionService:HasTag(current, GameConfig.TAG_PLATFORMA) then
+							foundPlatform = current
+							break
+						end
+						current = current.Parent
+					end
+					
+					if not foundPlatform then
+						-- Optional debug print
+						-- print("DEBUG: Floor hit but no tagged ancestor found for:", res.Instance.Name)
 					end
 				end
 			end
 
 			if foundPlatform then
+				print("DEBUG: Requesting points for:", foundPlatform.Name)
 				RequestPointsEvent:FireServer(foundPlatform)
+			else
+				-- Optional: Print only if on ground to avoid spam in air
+				if humanoid:GetState() == Enum.HumanoidStateType.Landed then
+					warn("DEBUG: Player on ground but no platform detected! (Recursive search failed)")
+				end
 			end
 		end
 	end

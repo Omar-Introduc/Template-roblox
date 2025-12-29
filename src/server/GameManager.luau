@@ -1,6 +1,6 @@
 --!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ServerStorage = game:GetService("ServerStorage")
+local _ServerStorage = game:GetService("ServerStorage")
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 
@@ -69,34 +69,58 @@ if not PointAwarded then
 	warn("⚠️ [GameManager] 'PointAwarded' RemoteEvent no encontrado en ReplicatedStorage/Events!")
 end
 
+function GameManager:Start()
+	print("✅ GameManager Started (Loop delegated to events)")
+end
+
 function GameManager.otorgarPuntos(player: Player, platformName: string, position: Vector3)
 	local nPlataforma = tonumber(string.match(platformName, "_(%d+)")) or 1
 	local basePuntos = nPlataforma
 
 	local multiplicador = 1
 	if player.Character then
-		multiplicador = player.Character:GetAttribute("PointMultiplier") or 1
+		multiplicador = (player.Character:GetAttribute("PointMultiplier") :: number?) or 1
 	end
 
-	local puntosAGanar = basePuntos * multiplicador
+	local puntosAGanar = (basePuntos or 1) * multiplicador
 
 	-- print(string.format("DEBUG: otorgarPuntos -> Player: %s, Platform: %s, Puntos: %d", player.Name, platformName, puntosAGanar))
+	print(string.format("DEBUG: Awarding %d points to %s for %s", puntosAGanar, player.Name, platformName))
 
 	local leaderstats = player:FindFirstChild("leaderstats")
 	if leaderstats then
-		local cr = leaderstats:FindFirstChild("CR") --[[@as NumberValue]]
-		if cr then
-			cr.Value += puntosAGanar
+		local cr = leaderstats:FindFirstChild("CR")
+		if cr and (cr:IsA("NumberValue") or cr:IsA("IntValue")) then
+			local valInstance = cr :: NumberValue -- Cast to interface that has .Value
+			local oldValue = valInstance.Value
+			valInstance.Value += puntosAGanar
+			print(string.format("DEBUG: Updated CR from %d to %d", oldValue, valInstance.Value))
+			
 			if PointAwarded then
 				PointAwarded:FireClient(player, puntosAGanar, position)
+			else
+				warn("⚠️ [GameManager] PointAwarded RemoteEvent is nil")
 			end
+		else
+			warn("❌ [GameManager] CR Value not found or not a NumberValue/IntValue in leaderstats")
 		end
+	else
+		warn("❌ [GameManager] leaderstats folder not found on player " .. player.Name)
 	end
 end
 
-function GameManager.ValidatePointRequest(player, platform)
-	if not platform or not platform:IsA("Model") and not platform:IsA("BasePart") then
-		return false, "Invalid Platform"
+function GameManager.ValidatePointRequest(player: Player, platform: Instance)
+	if not platform then return false, "Invalid Platform" end
+	
+	local mainPart: BasePart?
+	if platform:IsA("Model") then
+		mainPart = platform.PrimaryPart
+	elseif platform:IsA("BasePart") then
+		mainPart = platform
+	end
+	
+	if not mainPart then
+		return false, "Invalid Platform Type"
 	end
 
 	-- 1. Rate Limiting Check
@@ -118,9 +142,6 @@ function GameManager.ValidatePointRequest(player, platform)
 	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart
 	if not rootPart then return false, "No RootPart" end
 
-	local mainPart = platform:IsA("Model") and platform.PrimaryPart or platform
-	if not mainPart or not mainPart:IsA("BasePart") then return false, "No MainPart" end
-
 	-- Validate Distance
 	local dist = (rootPart.Position - mainPart.Position).Magnitude
 	-- Safe margin: Platform size + some latency tolerance
@@ -134,11 +155,23 @@ end
 
 -- Validate Request Points from Client
 RequestPointsEvent.OnServerEvent:Connect(function(player: Player, platform: Instance)
+	print(string.format("DEBUG: Server received point request from %s for %s", player.Name, platform.Name))
 	local valid, reason = GameManager.ValidatePointRequest(player, platform)
 	if valid then
-		local mainPart = platform:IsA("Model") and platform.PrimaryPart or platform
-		if mainPart and mainPart:IsA("BasePart") then
-			otorgarPuntos(player, platform.Name, mainPart.Position)
+		local mainPart: BasePart?
+		if platform:IsA("Model") then
+			mainPart = platform.PrimaryPart
+		elseif platform:IsA("BasePart") then
+			mainPart = platform
+		end
+		
+		if mainPart then
+			GameManager.otorgarPuntos(player, platform.Name, mainPart.Position)
+		end
+	else
+		-- DEBUG: Warn user why point was rejected (helps with "missing prefab" issues)
+		if reason ~= "Rate Limit" then -- Ignore rate limit spam
+			warn(string.format("❌ [GameManager] Point Rejected for %s on %s: %s", player.Name, platform.Name, tostring(reason)))
 		end
 	end
 end)
@@ -200,11 +233,19 @@ activatePlatform = function(platform: Instance)
 	if platform:GetAttribute("IsActive") then return end
 	platform:SetAttribute("IsActive", true)
 
-	local mainPart = platform:IsA("Model") and platform.PrimaryPart or platform
-	if not mainPart or not mainPart:IsA("BasePart") then return end
+	local mainPart: BasePart? = nil
+	if platform:IsA("Model") then
+		mainPart = platform.PrimaryPart
+	elseif platform:IsA("BasePart") then
+		mainPart = platform
+	end
+	
+	if not mainPart then return end
 
 	if not platform:GetAttribute("OriginalPivot") then
-		platform:SetAttribute("OriginalPivot", platform:GetPivot())
+		if platform:IsA("Model") or platform:IsA("BasePart") then
+			platform:SetAttribute("OriginalPivot", (platform :: PVInstance):GetPivot())
+		end
 	end
 
 	MovementService.StopMovement(platform)
@@ -216,8 +257,10 @@ activatePlatform = function(platform: Instance)
 	mainPart.AssemblyLinearVelocity = Vector3.zero
 	mainPart.AssemblyAngularVelocity = Vector3.zero
 
-	local pivotBase = platform:GetAttribute("OriginalPivot") --[[@as CFrame]]
-	platform:PivotTo(pivotBase)
+	local pivotBase = platform:GetAttribute("OriginalPivot") :: CFrame
+	if platform:IsA("Model") or platform:IsA("BasePart") then
+		(platform :: PVInstance):PivotTo(pivotBase)
+	end
 
 	platform:SetAttribute("Triggered", false)
 	mainPart.Color = Color3.fromRGB(163, 162, 165) -- Default grey-ish
