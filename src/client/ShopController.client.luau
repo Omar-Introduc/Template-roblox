@@ -1,147 +1,83 @@
 -- src/client/ShopController.client.luau
--- Ingeniero de UI/UX en Roblox (Nivel Experto)
--- VERSIÓN CANVAS FIJO (4 ITEMS) - Sin barra de desplazamiento
-
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local Lighting = game:GetService("Lighting")
+-- ¡LÓGICA PURA! Sin Instance.new() visuales.
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
-local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
-local BuyItem = ReplicatedStorage:WaitForChild("Events"):WaitForChild("BuyItem")
 
-local ShopUI_Folder = ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("ShopUI")
+local Events = ReplicatedStorage:WaitForChild("Events")
+local BuyItemFunction = Events:WaitForChild("BuyItem")
+local ShopConfig = require(ReplicatedStorage.Shared.ShopConfig)
 
--- UI Refs
-local MainGui = PlayerGui:WaitForChild("MainGui", 10) or PlayerGui:FindFirstChildWhichIsA("ScreenGui")
-local ShopFrame = MainGui and MainGui:FindFirstChild("ShopFrame", true)
-local ScrollingFrame = ShopFrame and ShopFrame:FindFirstChild("ScrollingFrame", true)
-local CloseButton = ShopFrame and ShopFrame:FindFirstChild("CloseButton", true)
+-- Referencia al Prefab ya existente (que creaste con el Builder)
+-- Asumimos que el UI ya está en PlayerGui porque lo pusiste en StarterGui
+-- NOTA: Si este WaitForChild se queda pegado, es porque no has corrido el Builder
+-- y movido el resultado a StarterGui.
+local shopUI = PlayerGui:WaitForChild("ShopUI_Prefab")
+local mainFrame = shopUI:WaitForChild("MainFrame")
+local container = mainFrame:WaitForChild("ItemsContainer")
+local closeBtn = mainFrame:FindFirstChild("CloseButton")
 
--- EFECTO BLUR REAL
-local blurEffect = Lighting:FindFirstChild("ShopBlur") or Instance.new("BlurEffect")
-blurEffect.Name = "ShopBlur"
-blurEffect.Size = 0
-blurEffect.Parent = Lighting
+local function setupItemLogic(itemFrame, itemData)
+	local buyBtn = itemFrame:FindFirstChild("BuyButton")
+	if not buyBtn then return end
 
-local function toggleBlur(isFocused)
-    local targetSize = isFocused and 24 or 0
-    TweenService:Create(blurEffect, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = targetSize}):Play()
+	-- Lógica de interacción
+	buyBtn.MouseButton1Click:Connect(function()
+		local success, msg = BuyItemFunction:InvokeServer(itemData.Id)
+		if success then
+			print("Compra exitosa!")
+		else
+			warn("Fallo: " .. msg)
+		end
+	end)
 end
 
--- MICRO-INTERACCIONES
-local function applyHoverEffect(button)
-    local originalSize = button.Size
-    local hoverSize = UDim2.new(originalSize.X.Scale * 1.05, originalSize.X.Offset, originalSize.Y.Scale * 1.05, originalSize.Y.Offset)
-    
-    button.MouseEnter:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = hoverSize}):Play()
-    end)
-    
-    button.MouseLeave:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = originalSize}):Play()
-    end)
+-- Aquí solo rellenas datos, no creas estilos
+local function populateShop()
+	-- Buscar el template que dejamos en el prefab
+	local template = container:FindFirstChild("ItemTemplate")
+	if not template then return end
+	template.Visible = false -- Ocultar el original
+
+	for _, category in pairs(ShopConfig.Categories) do
+		for _, item in ipairs(category.Items) do
+			local newItem = template:Clone()
+			newItem.Name = item.Id
+			newItem.Visible = true
+			newItem.Parent = container
+
+			-- Asignar datos (Color, Texto) al prefab existente
+			newItem.BackgroundColor3 = item.Color
+			-- (Asumiendo que el prefab tiene un TextLabel llamado 'Title')
+			if newItem:FindFirstChild("Title") then
+				newItem.Title.Text = item.Name
+			end
+
+			setupItemLogic(newItem, item)
+		end
+	end
 end
 
-local function animateShine(button)
-    local gradient = button:FindFirstChildWhichIsA("UIGradient")
-    if not gradient then return end
-    
-    task.spawn(function()
-        while button and button.Parent do
-            gradient.Offset = Vector2.new(-1, 0)
-            local tween = TweenService:Create(gradient, TweenInfo.new(1.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)})
-            tween:Play()
-            tween.Completed:Wait()
-            task.wait(2)
-        end
-    end)
+local function toggleShop(visible)
+	mainFrame.Visible = visible
 end
 
--- RENDERIZADO DE ÍTEMS (Canvas Fijo 2x2)
-local function renderShop()
-    if not ScrollingFrame then return end
-    
-    -- Configurar el ScrollingFrame como si fuera un Frame fijo (sin scroll)
-    ScrollingFrame.ScrollingEnabled = false
-    ScrollingFrame.ScrollBarThickness = 0
-    ScrollingFrame:ClearAllChildren()
-    
-    local gridLayout = ScrollingFrame:FindFirstChildOfClass("UIGridLayout") or Instance.new("UIGridLayout", ScrollingFrame)
-    gridLayout.CellSize = UDim2.new(0.48, 0, 0.48, 0) -- 2x2
-    gridLayout.CellPadding = UDim2.new(0.04, 0, 0.04, 0)
-    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    
-    local template = (ShopUI_Folder and ShopUI_Folder:FindFirstChild("ItemTemplate"))
-    
-    -- Solo mostramos una categoría o un mix de 4 ítems para mantener el canvas fijo
-    local itemsToDisplay = {}
-    local count = 0
-    for _, category in pairs(ShopConfig.Categories) do
-        for _, item in ipairs(category.Items) do
-            table.insert(itemsToDisplay, item)
-            count += 1
-            if count >= 4 then break end
-        end
-        if count >= 4 then break end
-    end
-    
-    for _, item in ipairs(itemsToDisplay) do
-        local itemCard = template and template:Clone() or Instance.new("TextButton")
-        itemCard.Name = item.Id
-        
-        if not template then
-            itemCard.Text = item.Name .. "\n" .. item.Price .. " CR"
-            itemCard.BackgroundColor3 = item.Color or Color3.fromRGB(50, 50, 50)
-            itemCard.BackgroundTransparency = 0.3
-            itemCard.TextScaled = true
-        else
-            local titleLabel = itemCard:FindFirstChild("ItemName", true)
-            local priceLabel = itemCard:FindFirstChild("Price", true)
-            local buyBtn = itemCard:FindFirstChild("BuyButton", true) or itemCard
-            
-            if titleLabel then titleLabel.Text = item.Name end
-            if priceLabel then priceLabel.Text = item.Price .. " CR" end
-            
-            if item.Color then
-                local bg = itemCard:FindFirstChild("Background", true) or itemCard
-                bg.BackgroundColor3 = item.Color
-                local stroke = itemCard:FindFirstChildOfClass("UIStroke", true)
-                if stroke then stroke.Color = item.Color end
-            end
-            
-            applyHoverEffect(buyBtn)
-            animateShine(buyBtn)
-            
-            buyBtn.MouseButton1Click:Connect(function()
-                BuyItem:InvokeServer(item.Id)
-            end)
-        end
-        itemCard.Parent = ScrollingFrame
-    end
+if closeBtn then
+	closeBtn.MouseButton1Click:Connect(function()
+		toggleShop(false)
+	end)
 end
 
-local function openShop()
-    if not ShopFrame then return end
-    ShopFrame.Visible = true
-    toggleBlur(true)
-    renderShop()
-    
-    ShopFrame.Size = UDim2.new(0, 0, 0, 0)
-    TweenService:Create(ShopFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 600, 0, 400)}):Play()
-end
+-- Inicialización
+populateShop()
+toggleShop(false) -- Empezar cerrado
 
-local function closeShop()
-    if not ShopFrame then return end
-    toggleBlur(false)
-    local tween = TweenService:Create(ShopFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 0)})
-    tween:Play()
-    tween.Completed:Connect(function() ShopFrame.Visible = false end)
-end
+-- Escuchar eventos para abrir la tienda (si existieran)
+-- Por ahora, dejaremos que otro script controle la visibilidad si es necesario,
+-- o agregamos un botón de apertura si el usuario lo requiere.
+-- En la versión anterior había un 'ShopBoardController' que probablemente maneje la apertura.
 
-if CloseButton then CloseButton.MouseButton1Click:Connect(closeShop) end
-
-print("✨ [Client] ShopController (Fijo) cargado.")
+print("✨ [Client] ShopController (Limpio) cargado.")
