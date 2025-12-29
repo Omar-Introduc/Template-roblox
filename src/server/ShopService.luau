@@ -1,4 +1,4 @@
--- src/server/ShopService.server.luau
+-- src/server/ShopService.luau
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,7 +9,9 @@ local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
 local Events = ReplicatedStorage:WaitForChild("Events")
 local BuyItemFunction = Events:WaitForChild("BuyItem")
 
-local function applyItemEffect(character, item)
+local ShopService = {}
+
+function ShopService.ApplyEffect(character, item)
 	local humanoid = character:FindFirstChild("Humanoid")
 	if not humanoid then return end
 
@@ -19,9 +21,11 @@ local function applyItemEffect(character, item)
 
 	if itemType == "Speed" then
 		humanoid.WalkSpeed = value
+		character:SetAttribute("Buff_WalkSpeed", value) -- Used for verification
 	elseif itemType == "Jump" then
 		humanoid.JumpPower = value
 		humanoid.UseJumpPower = true
+		character:SetAttribute("Buff_JumpPower", value)
 	elseif itemType == "Gravity" then
 		-- Efecto de gravedad baja
 		local hrp = character:FindFirstChild("HumanoidRootPart")
@@ -103,7 +107,7 @@ local function applyItemEffect(character, item)
 	end
 end
 
-local function onBuyItem(player, itemId)
+function ShopService.ProcessPurchase(player, itemId)
 	-- Buscar item en todas las categorías
 	local itemData = nil
 	for _, cat in pairs(ShopConfig.Categories) do
@@ -118,23 +122,28 @@ local function onBuyItem(player, itemId)
 
 	if not itemData then return false, "Error" end
 
+	-- Support both 'Points' (from old scripts) and 'CR' (from newer scripts) for money
 	local leaderstats = player:FindFirstChild("leaderstats")
-	local crStat = leaderstats and leaderstats:FindFirstChild("CR")
+	if not leaderstats then return false, "No leaderstats" end
 
-	if not crStat or crStat.Value < itemData.Price then
+	local moneyStat = leaderstats:FindFirstChild("Points") or leaderstats:FindFirstChild("CR")
+
+	if not moneyStat or moneyStat.Value < itemData.Price then
 		return false, "Pobretón"
 	end
 
-	crStat.Value = crStat.Value - itemData.Price
+	moneyStat.Value = moneyStat.Value - itemData.Price
 
 	local character = player.Character
 	if character then
-		applyItemEffect(character, itemData)
+		ShopService.ApplyEffect(character, itemData)
 	end
 
 	return true, "OK"
 end
 
-BuyItemFunction.OnServerInvoke = onBuyItem
+BuyItemFunction.OnServerInvoke = function(player, itemId)
+	return ShopService.ProcessPurchase(player, itemId)
+end
 
--- Loop para limpiar buffs expirados ELIMINADO en favor de task.delay en applyItemEffect
+return ShopService

@@ -11,6 +11,8 @@ local FeedbackService = require(Shared:WaitForChild("FeedbackService"))
 local AssetScanner = require(Shared:WaitForChild("AssetScanner"))
 local GameConfig = require(Shared:WaitForChild("GameConfig"))
 
+local GameManager = {}
+
 -- Event System Setup (Decoupling)
 local EventsFolder = ReplicatedStorage:FindFirstChild("Events")
 if not EventsFolder then
@@ -67,7 +69,7 @@ if not PointAwarded then
 	warn("⚠️ [GameManager] 'PointAwarded' RemoteEvent no encontrado en ReplicatedStorage/Events!")
 end
 
-local function otorgarPuntos(player: Player, platformName: string, position: Vector3)
+function GameManager.otorgarPuntos(player: Player, platformName: string, position: Vector3)
 	local nPlataforma = tonumber(string.match(platformName, "_(%d+)")) or 1
 	local basePuntos = nPlataforma
 
@@ -92,9 +94,10 @@ local function otorgarPuntos(player: Player, platformName: string, position: Vec
 	end
 end
 
--- Validate Request Points from Client
-RequestPointsEvent.OnServerEvent:Connect(function(player: Player, platform: Instance)
-	if not platform or not platform:IsA("Model") and not platform:IsA("BasePart") then return end
+function GameManager.ValidatePointRequest(player, platform)
+	if not platform or not platform:IsA("Model") and not platform:IsA("BasePart") then
+		return false, "Invalid Platform"
+	end
 
 	-- 1. Rate Limiting Check
 	if not lastPointRequest[player] then
@@ -105,31 +108,39 @@ RequestPointsEvent.OnServerEvent:Connect(function(player: Player, platform: Inst
 	local now = os.clock()
 
 	if lastTime and (now - lastTime < COOLDOWN_TIME) then
-		-- Rate limit hit, ignore request silently or warn
-		return
+		return false, "Rate Limit"
 	end
 
 	lastPointRequest[player][platform] = now
 
 	local character = player.Character
-	if not character then return end
+	if not character then return false, "No Character" end
 	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart
-	if not rootPart then return end
+	if not rootPart then return false, "No RootPart" end
 
 	local mainPart = platform:IsA("Model") and platform.PrimaryPart or platform
-	if not mainPart or not mainPart:IsA("BasePart") then return end
+	if not mainPart or not mainPart:IsA("BasePart") then return false, "No MainPart" end
 
 	-- Validate Distance
 	local dist = (rootPart.Position - mainPart.Position).Magnitude
 	-- Safe margin: Platform size + some latency tolerance
 	-- Assuming platforms are not massive, 25 studs should be enough
 	if dist > 30 then
-		-- Too far, likely cheating or heavy lag
-		return
+		return false, "Too Far"
 	end
 
-	-- Award Points
-	otorgarPuntos(player, platform.Name, mainPart.Position)
+	return true, "Valid"
+end
+
+-- Validate Request Points from Client
+RequestPointsEvent.OnServerEvent:Connect(function(player: Player, platform: Instance)
+	local valid, reason = GameManager.ValidatePointRequest(player, platform)
+	if valid then
+		local mainPart = platform:IsA("Model") and platform.PrimaryPart or platform
+		if mainPart and mainPart:IsA("BasePart") then
+			otorgarPuntos(player, platform.Name, mainPart.Position)
+		end
+	end
 end)
 
 -- Forward declaration
@@ -153,7 +164,7 @@ local function handlePlatformTouch(platform: Instance, mainPart: BasePart)
 		PlatformSpawner.SpawnNext(platform, estructuras, CentroGlobalZ)
 
 		-- 3. Otorgar puntos (Inicial)
-		otorgarPuntos(player, platform.Name, mainPart.Position)
+		GameManager.otorgarPuntos(player, platform.Name, mainPart.Position)
 
 		-- 4. Iniciar loop de puntos continuos -> DELEGATED TO CLIENT (RequestPointsEvent)
 		-- The server no longer runs a loop here.
@@ -246,3 +257,5 @@ CollectionService:GetInstanceAddedSignal(GameConfig.TAG_PLATFORMA):Connect(funct
 	task.wait(0.1)
 	activatePlatform(instance)
 end)
+
+return GameManager
