@@ -162,6 +162,7 @@ function ShopService.ProcessPurchase(player, itemId)
 end
 
 BuyItemFunction.OnServerInvoke = function(player, itemId)
+	print(string.format("DEBUG: ShopService received request from %s for %s", player.Name, itemId))
 	return ShopService.ProcessPurchase(player, itemId)
 end
 

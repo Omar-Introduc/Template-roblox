@@ -96,21 +96,34 @@ RunService.Heartbeat:Connect(function()
 	local foundBuffs = {}
 
 	for name, val in pairs(attributes) do
-		if string.sub(name, 1, 5) == "Buff_" then
-			-- Determinar si mostrar
+		-- Whitelist/Filter logic
+		local isBuff = string.sub(name, 1, 5) == "Buff_"
+		local isMultiplier = name == "PointMultiplier"
+		local isShield = name == "HasShield"
+		local isDoubleJump = name == "Owns_DoubleJump"
+		
+		if isBuff or isMultiplier or isShield or isDoubleJump then
 			local timeLeft = 0
-			local isTemp = false
+			local isTimer = false
+			local displayValue = ""
 
 			if type(val) == "number" then
-				-- Timestamp
-				if val > now then
-					timeLeft = val - now
-					isTemp = true
+				-- Check if it is a Timer (ends in _End)
+				if string.sub(name, -4) == "_End" then
+					if val > now then
+						timeLeft = val - now
+						isTimer = true
+					else
+						continue -- Expired timer
+					end
 				else
-					continue -- Expirado
+					-- It's a Stat (Speed, Jump, Multiplier)
+					displayValue = tostring(val)
+					if isMultiplier then displayValue = "x" .. displayValue end
 				end
 			elseif val == true then
-				-- Permanente
+				-- Permanent / Boolean
+				displayValue = "ON"
 			end
 
 			foundBuffs[name] = true
@@ -120,32 +133,53 @@ RunService.Heartbeat:Connect(function()
 			if not label then
 				local frame = Instance.new("Frame")
 				frame.Name = name
-				frame.Size = UDim2.new(0, 120, 0, 30)
+				frame.Size = UDim2.new(0, 140, 0, 30)
 				frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 				frame.BackgroundTransparency = 0.6
+				
+				-- Gradient (Optional polish)
+				local grad = Instance.new("UIGradient")
+				grad.Color = ColorSequence.new{
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(40,40,40)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(0,0,0))
+				}
+				grad.Parent = frame
 
 				local corner = Instance.new("UICorner")
 				corner.CornerRadius = UDim.new(0, 6)
 				corner.Parent = frame
 
 				label = Instance.new("TextLabel")
-				label.Size = UDim2.new(1, 0, 1, 0)
+				label.Size = UDim2.new(1, -10, 1, 0)
+				label.Position = UDim2.new(0, 5, 0, 0)
 				label.BackgroundTransparency = 1
 				label.Font = Enum.Font.GothamBold
 				label.TextColor3 = Color3.new(1, 1, 1)
 				label.TextSize = 14
+				label.TextXAlignment = Enum.TextXAlignment.Left
 				label.Parent = frame
 
 				frame.Parent = buffsContainer
-				activeBuffLabels[name] = label -- Guardamos la referencia al Label
+				activeBuffLabels[name] = label
 			end
 
-			-- Actualizar Texto
-			local displayName = buffNames[name] or name
-			if isTemp then
-				label.Text = displayName .. " " .. formatTime(timeLeft)
+			-- Custom Naming Logic
+			local cleanName = name
+			if buffNames[name] then
+				cleanName = buffNames[name]
+			elseif isMultiplier then
+				cleanName = "MULTIPLIER"
+			elseif string.sub(name, 1, 5) == "Buff_" then
+				cleanName = string.sub(name, 6):gsub("_End", "")
+			end
+			
+			-- Final Text Logic
+			if isTimer then
+				label.Text = cleanName .. " " .. formatTime(timeLeft)
+				label.TextColor3 = Color3.fromRGB(255, 200, 50) -- Orange/Yellow for timers
 			else
-				label.Text = displayName
+				label.Text = cleanName .. " " .. displayValue
+				label.TextColor3 = Color3.fromRGB(50, 255, 100) -- Green for active stats
 			end
 		end
 	end

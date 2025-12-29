@@ -6,7 +6,7 @@ local TweenService = game:GetService("TweenService")
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 
-local Player = Players.LocalPlayer
+local _Player = Players.LocalPlayer
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 local BuyItem = ReplicatedStorage:WaitForChild("Events"):WaitForChild("BuyItem")
 
@@ -43,12 +43,32 @@ end
 
 -- POBLAR UNA PANTALLA (SIN BARRA DE DESPLAZAMIENTO)
 local function populateBoard(board)
-    local sg = board:FindFirstChild("ShopSurfaceUI") or board:FindFirstChildOfClass("SurfaceGui") or Instance.new("SurfaceGui")
-    sg.Name = "ShopSurfaceUI"
+    -- Determine the actual Adornee Part (SurfaceGui needs a BasePart, not a Model)
+    local adorneePart = board
+    if board:IsA("Model") then
+        adorneePart = board:FindFirstChild("Display") or board.PrimaryPart or board:FindFirstChildWhichIsA("BasePart", true)
+    end
+    
+    if not adorneePart or not adorneePart:IsA("BasePart") then
+        warn("⚠️ [ShopBoardController] No valid Adornee Part found for board:", board.Name)
+        return
+    end
+
+    -- Use PlayerGui for reliable local input handling
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local sgName = "ShopSurfaceUI_" .. board.Name
+    local sg = playerGui:FindFirstChild(sgName) or Instance.new("SurfaceGui")
+    
+    sg.Name = sgName
+    sg.Adornee = adorneePart -- Link to the determined Part
+    print(string.format("DEBUG: Creating UI for %s using Adornee: %s", board.Name, adorneePart.Name))
+
     sg.Face = Enum.NormalId.Front
     sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
     sg.PixelsPerStud = 50
-    sg.Parent = board
+    sg.AlwaysOnTop = true -- FORCE ON TOP to prevent occlusion blocking clicks
+    sg.Parent = playerGui 
+    sg.ResetOnSpawn = false
     
     sg:ClearAllChildren()
     
@@ -58,11 +78,10 @@ local function populateBoard(board)
     container.Size = UDim2.new(1, -20, 1, -20)
     container.Position = UDim2.new(0.5, 0, 0.5, 0)
     container.AnchorPoint = Vector2.new(0.5, 0.5)
-    container.BackgroundTransparency = 1 -- Fondo transparente para efecto Glassmorphism del board
+    container.BackgroundTransparency = 1 
     container.Parent = sg
     
     local gridLayout = Instance.new("UIGridLayout")
-    -- Ajustado para 2x2 en un canvas fijo
     gridLayout.CellSize = UDim2.new(0.48, 0, 0.48, 0)
     gridLayout.CellPadding = UDim2.new(0.04, 0, 0.04, 0)
     gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -94,6 +113,7 @@ local function populateBoard(board)
         local item = itemsToDisplay[i]
         local itemCard = template and template:Clone() or Instance.new("TextButton")
         itemCard.Name = item.Id
+        itemCard.Active = true -- Ensure it catches input
         
         if not template then
             itemCard.Text = item.Name .. "\n" .. item.Price .. " CR"
@@ -107,6 +127,13 @@ local function populateBoard(board)
             stroke.Color = item.Color or Color3.new(1,1,1)
             stroke.Thickness = 2
             stroke.Parent = itemCard
+            
+            -- Direct Click Connection for Fallback Button
+             itemCard.MouseButton1Click:Connect(function()
+                 print("DEBUG: CLICK DETECTED on Fallback Button for", item.Id)
+                 local success, msg = BuyItem:InvokeServer(item.Id)
+                 print("DEBUG: Purchase result:", success, msg)
+             end)
         else
             -- Data Binding
             local titleLabel = itemCard:FindFirstChild("ItemName", true)
@@ -118,8 +145,9 @@ local function populateBoard(board)
             
             if item.Color then
                 local bg = itemCard:FindFirstChild("Background", true) or itemCard
-                bg.BackgroundColor3 = item.Color
                 local st = itemCard:FindFirstChildOfClass("UIStroke", true)
+                
+                if bg:IsA("GuiObject") then bg.BackgroundColor3 = item.Color end
                 if st then st.Color = item.Color end
             end
             
@@ -127,11 +155,30 @@ local function populateBoard(board)
             animateShine(buyBtn)
             
             buyBtn.MouseButton1Click:Connect(function()
-                BuyItem:InvokeServer(item.Id)
+                -- print("DEBUG: CLICK DETECTED on Template Button for", item.Id)
+                local success, msg = BuyItem:InvokeServer(item.Id)
+                -- print("DEBUG: Purchase result:", success, msg)
+                
+                local originalText = buyBtn.Text
+                if success then
+                    buyBtn.Text = "¡COMPRADO!"
+                    buyBtn.TextColor3 = Color3.new(0, 1, 0)
+                else
+                    buyBtn.Text = msg or "ERROR"
+                    buyBtn.TextColor3 = Color3.new(1, 0, 0)
+                end
+                
+                task.delay(1, function()
+                    if buyBtn then
+                        buyBtn.Text = originalText
+                        buyBtn.TextColor3 = Color3.new(1, 1, 1) 
+                    end
+                end)
             end)
         end
         
         itemCard.Parent = container
+        -- print("DEBUG: Added item button", item.Id, "to board")
     end
 end
 
@@ -144,8 +191,12 @@ local function discoverAndPopulate()
     
     -- Fallback por nombre
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if (obj.Name == "ShopBoard" or obj.Name == "TiendaVisual") and not CollectionService:HasTag(obj, "TiendaTag") then
-            task.spawn(populateBoard, obj)
+        if (obj.Name == "ShopBoard" or obj.Name == "TiendaVisual" or string.find(obj.Name, "ShopBoard")) and not CollectionService:HasTag(obj, "TiendaTag") then
+            -- Check if it's a Part or MeshPart to be a valid board
+            if obj:IsA("BasePart") then
+                print("DEBUG: Found ShopBoard by fallback name:", obj.Name)
+                task.spawn(populateBoard, obj)
+            end
         end
     end
 end

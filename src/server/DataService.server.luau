@@ -1,6 +1,6 @@
--- src/server/DataService.server.luau
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
+local RunService = game:GetService("RunService")
 local _ServerScriptService = game:GetService("ServerScriptService")
 local _ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -99,6 +99,14 @@ local function loadData(player)
 			CR = 0,
 			Inventory = {}
 		}
+	end
+	
+	-- CHEAT: Dar 1000 CR si es el Admin o estamos en Studio
+	if RunService:IsStudio() or player.Name == "RazzetiGit" or player.UserId == 123456 then -- Reemplaza con tu ID real si quieres
+		if data.CR < 1000 then
+			data.CR = 1000
+			warn("🤑 [DataService] Cheat Activado: 1000 CR para " .. player.Name)
+		end
 	end
 
 	-- Compatibilidad/Migración si fuera necesaria
