@@ -78,7 +78,8 @@ local function populateStandardBoard(board: BasePart)
     sg.Face = Enum.NormalId.Front
     sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
     sg.PixelsPerStud = 50
-    sg.AlwaysOnTop = true
+    sg.AlwaysOnTop = false -- FIX: Ya no se ve a través de paredes
+    sg.ZOffset = 0.05 -- Evitar Z-fighting
     sg.ResetOnSpawn = false
     sg:ClearAllChildren()
 
@@ -224,7 +225,8 @@ local function populateFuturisticBoard(board: BasePart)
     sg.Face = Enum.NormalId.Front
     sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
     sg.PixelsPerStud = 50
-    sg.AlwaysOnTop = true
+    sg.AlwaysOnTop = false -- FIX: Ya no se ve a través de paredes
+    sg.ZOffset = 0.05 -- Evitar Z-fighting con la parte
     sg.ResetOnSpawn = false
     sg:ClearAllChildren()
 
@@ -300,6 +302,7 @@ local function populateFuturisticBoard(board: BasePart)
         local list = Instance.new("UIListLayout")
         list.Padding = UDim.new(0, 15)
         list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        list.VerticalAlignment = Enum.VerticalAlignment.Center -- CENTRAR ITEMS VERTICALMENTE
         list.SortOrder = Enum.SortOrder.LayoutOrder
         list.Parent = scrollingContent
         
