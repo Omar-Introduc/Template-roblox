@@ -37,6 +37,14 @@ return {
                 { Id = "TaxExempt", Name = "Sin Impuestos", Price = 300, Color = Color3.fromRGB(150, 255, 200), Type = "Discount", Implemented = false, CurrencyType = "CR" },
             }
         },
+        Beasts = {
+            Title = "🐾 CRIATURAS",
+            Items = {
+                { Id = "Beast_Gato_Common", Name = "Gato Callejero", Price = 50, Rarity = "Common", Type = "Companion", Implemented = true },
+                { Id = "Beast_Gato_Rare", Name = "Gato Siamés", Price = 150, Rarity = "Rare", Type = "Companion", Implemented = true },
+                { Id = "Beast_Gato_Mystic", Name = "Gato Cósmico", Price = 500, Rarity = "Mystic", Type = "Companion", Implemented = true },
+            }
+        },
         Robux = {
             Title = "💎 TIENDA ROBUX",
             Items = {

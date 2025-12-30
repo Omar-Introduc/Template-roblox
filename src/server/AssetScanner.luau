@@ -88,7 +88,8 @@ function AssetScanner.Init()
         ["TiendaTag_Aero"] = "Aero",
         ["TiendaTag_Survival"] = "Survival",
         ["TiendaTag_Economy"] = "Economy",
-        ["TiendaTag_Robux"] = "Robux"
+        ["TiendaTag_Robux"] = "Robux",
+        ["TiendaTag_Beasts"] = "Beasts"
     }
 
     local allShopTags = {"TiendaTag"}
@@ -98,6 +99,7 @@ function AssetScanner.Init()
     local BuildersFolder = script.Parent:WaitForChild("Builders", 5)
     local ShopBuilderRobux = BuildersFolder and require(BuildersFolder:WaitForChild("ShopBuilder_Robux"))
     local ShopBuilderStandard = BuildersFolder and require(BuildersFolder:WaitForChild("ShopBuilder_Standard"))
+    local ShopBuilderBeasts = BuildersFolder and require(BuildersFolder:WaitForChild("ShopBuilder_Beasts"))
 
     local processedShops = {}
 
@@ -125,6 +127,8 @@ function AssetScanner.Init()
                 if mainPart then
                     if category == "Robux" and ShopBuilderRobux then
                         ShopBuilderRobux.BuildFuturisticKiosk(mainPart)
+                    elseif category == "Beasts" and ShopBuilderBeasts then
+                        ShopBuilderBeasts.BuildNaturePanel(mainPart)
                     elseif ShopBuilderStandard then
                         ShopBuilderStandard.BuildStandardPanel(mainPart)
                     end

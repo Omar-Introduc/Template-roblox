@@ -122,6 +122,37 @@ function ShopService.ApplyEffect(character, item)
 		else
 			character:SetAttribute("Buff_Multiplier_End", 9999999999) -- Representa infinito
 		end
+	elseif itemType == "Companion" then
+		-- Sistema de Bestias
+		local existing = character:FindFirstChild("ActiveCompanion")
+		if existing then existing:Destroy() end
+
+		-- ID format: Beast_Gato_Common -> modelName = "Gato"
+		local parts = string.split(item.Id, "_")
+		local modelName = parts[2] 
+		
+		local prefabsFolder = game:GetService("ServerStorage"):WaitForChild("Prefabs")
+		local beastsFolder = prefabsFolder:FindFirstChild("bestias")
+		local prefab = beastsFolder and beastsFolder:FindFirstChild(modelName)
+		
+		if prefab then
+			local beast = prefab:Clone()
+			beast.Name = "ActiveCompanion"
+			beast:SetAttribute("Rarity", item.Rarity or "Common") -- Inyectar rareza dinámica
+			
+			-- Asegurar que no colisione con el jugador
+			for _, desc in ipairs(beast:GetDescendants()) do
+				if desc:IsA("BasePart") then
+					desc.CanCollide = false
+					desc.Massless = true
+				end
+			end
+			
+			beast.Parent = character
+			print("🐾 [ShopService] Bestia equipada: " .. modelName .. " (" .. (item.Rarity or "Common") .. ")")
+		else
+			warn("⚠️ [ShopService] No se encontró el prefab de bestia: " .. tostring(modelName))
+		end
 	end
 end
 

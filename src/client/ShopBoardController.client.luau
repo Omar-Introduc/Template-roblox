@@ -424,12 +424,136 @@ local function populateFuturisticBoard(board: BasePart)
 end
 
 -- ==========================================
--- INICIALIZACIÓN Y DISPATCHER
+-- LÓGICA DE TIENDA BESTIAS (RÚSTICA - VERDE)
 -- ==========================================
+local function populateBeastBoard(board: BasePart)
+    local sgName = "BeastShop_" .. board.Name
+    local foundSg = playerGui:FindFirstChild(sgName)
+    local sg: SurfaceGui
+    
+    if foundSg and foundSg:IsA("SurfaceGui") then
+        sg = foundSg
+    else
+        sg = Instance.new("SurfaceGui")
+        sg.Name = sgName
+        sg.Parent = playerGui
+    end
+
+    sg.Adornee = board
+    sg.Face = Enum.NormalId.Front
+    sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+    sg.PixelsPerStud = 50
+    sg.AlwaysOnTop = false
+    sg.ZOffset = 0.05
+    sg.ResetOnSpawn = false
+    sg:ClearAllChildren()
+
+    local category = ShopConfig.Categories.Beasts
+
+    -- Contenedor Rústico
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, -10, 1, -10)
+    container.Position = UDim2.fromScale(0.5, 0.5)
+    container.AnchorPoint = Vector2.new(0.5, 0.5)
+    container.BackgroundTransparency = 1
+    container.Parent = sg
+
+    -- Título Naturaleza
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 60)
+    title.BackgroundTransparency = 1
+    title.Text = category.Title:upper()
+    title.Font = Enum.Font.FredokaOne
+    title.TextColor3 = Color3.fromRGB(144, 238, 144) -- Verde claro
+    title.TextSize = 45
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.Parent = container
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -20, 1, -70)
+    scroll.Position = UDim2.fromOffset(10, 70)
+    scroll.BackgroundTransparency = 1
+    scroll.ScrollBarThickness = 6
+    scroll.Parent = container
+
+    local list = Instance.new("UIListLayout")
+    list.Padding = UDim.new(0, 15)
+    list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    list.Parent = scroll
+
+    for i, item in ipairs(category.Items) do
+        local card = Instance.new("Frame")
+        card.BackgroundColor3 = Color3.fromRGB(34, 139, 34) -- Forest Green
+        card.BackgroundTransparency = 0.2
+        card.Size = UDim2.new(0.95, 0, 0, 110)
+        createCorner(card, 15)
+        createStroke(card, Color3.fromRGB(50, 205, 50), 3)
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, -120, 0.5, 0)
+        nameLabel.Position = UDim2.fromOffset(20, 10)
+        nameLabel.Text = item.Name
+        nameLabel.Font = Enum.Font.FredokaOne
+        nameLabel.TextColor3 = COLORS.WHITE
+        nameLabel.TextSize = 28
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Parent = card
+
+        local rarityLabel = Instance.new("TextLabel")
+        rarityLabel.Size = UDim2.new(1, -120, 0.3, 0)
+        rarityLabel.Position = UDim2.fromOffset(20, 50)
+        rarityLabel.Text = "Rareza: " .. (item.Rarity or "Common")
+        rarityLabel.Font = Enum.Font.GothamBold
+        
+        -- Color según rareza
+        if item.Rarity == "Mystic" then
+            rarityLabel.TextColor3 = COLORS.GOLD
+        elseif item.Rarity == "Rare" then
+            rarityLabel.TextColor3 = COLORS.NEON_BLUE
+        else
+            rarityLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        end
+        
+        rarityLabel.TextSize = 18
+        rarityLabel.TextXAlignment = Enum.TextXAlignment.Left
+        rarityLabel.BackgroundTransparency = 1
+        rarityLabel.Parent = card
+
+        local buyBtn = Instance.new("TextButton")
+        buyBtn.Size = UDim2.new(0, 100, 0.8, 0)
+        buyBtn.Position = UDim2.new(1, -110, 0.1, 0)
+        buyBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 0)
+        buyBtn.Text = item.Price .. " CR"
+        buyBtn.Font = Enum.Font.FredokaOne
+        buyBtn.TextColor3 = COLORS.WHITE
+        buyBtn.TextSize = 22
+        createCorner(buyBtn, 10)
+        createStroke(buyBtn, COLORS.WHITE, 1)
+        buyBtn.Parent = card
+
+        buyBtn.MouseButton1Click:Connect(function()
+             local res, err = BuyItem:InvokeServer(item.Id)
+             if res then
+                buyBtn.Text = "ADOPTADO"
+                buyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+             else
+                buyBtn.Text = "FALTA CR"
+                task.wait(1)
+                buyBtn.Text = item.Price .. " CR"
+             end
+        end)
+
+        card.Parent = scroll
+    end
+    scroll.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y + 20)
+end
 local function populateDispatcher(board: BasePart)
     local categoryAttr = board:GetAttribute("Category")
     if categoryAttr == "Robux" then
         populateFuturisticBoard(board)
+    elseif categoryAttr == "Beasts" then
+        populateBeastBoard(board)
     else
         populateStandardBoard(board)
     end
