@@ -245,6 +245,9 @@ activatePlatform = function(platform: Instance)
 	if not platform:GetAttribute("OriginalPivot") then
 		if platform:IsA("Model") or platform:IsA("BasePart") then
 			platform:SetAttribute("OriginalPivot", (platform :: PVInstance):GetPivot())
+            if mainPart then
+                platform:SetAttribute("OriginalColor", mainPart.Color)
+            end
 		end
 	end
 
@@ -263,7 +266,13 @@ activatePlatform = function(platform: Instance)
 	end
 
 	platform:SetAttribute("Triggered", false)
-	mainPart.Color = Color3.fromRGB(163, 162, 165) -- Default grey-ish
+	
+    local savedColor = platform:GetAttribute("OriginalColor")
+    if savedColor and typeof(savedColor) == "Color3" then
+        mainPart.Color = savedColor
+    else
+	    mainPart.Color = Color3.fromRGB(163, 162, 165) -- Fallback only if no original color found
+    end
 
 	if platform.Name ~= "Plataforma_1" then
 		MovementService.StartMovement(platform, {CentroZ = CentroGlobalZ})

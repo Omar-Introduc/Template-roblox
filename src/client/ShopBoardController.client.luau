@@ -6,11 +6,14 @@ local TweenService = game:GetService("TweenService")
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 
-local _Player = Players.LocalPlayer
+local player = Players.LocalPlayer
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 local BuyItem = ReplicatedStorage:WaitForChild("Events"):WaitForChild("BuyItem")
 
 local ShopUI_Folder = ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("ShopUI")
+
+-- Tracking of purchased items for current life
+local purchasedItems: { [string]: boolean } = {}
 
 -- MICRO-INTERACCIONES
 local function applyHoverEffect(button)
@@ -18,6 +21,7 @@ local function applyHoverEffect(button)
     local hoverSize = UDim2.new(originalSize.X.Scale * 1.05, originalSize.X.Offset, originalSize.Y.Scale * 1.05, originalSize.Y.Offset)
     
     button.MouseEnter:Connect(function()
+        if purchasedItems[button.Parent.Name] then return end
         TweenService:Create(button, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = hoverSize}):Play()
     end)
     
@@ -32,6 +36,7 @@ local function animateShine(button)
     
     task.spawn(function()
         while button and button.Parent do
+            if purchasedItems[button.Parent.Name] then break end
             gradient.Offset = Vector2.new(-1, 0)
             local tween = TweenService:Create(gradient, TweenInfo.new(1.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)})
             tween:Play()
@@ -55,13 +60,13 @@ local function populateBoard(board)
     end
 
     -- Use PlayerGui for reliable local input handling
-    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local playerGui = player:WaitForChild("PlayerGui")
     local sgName = "ShopSurfaceUI_" .. board.Name
     local sg = playerGui:FindFirstChild(sgName) or Instance.new("SurfaceGui")
     
     sg.Name = sgName
     sg.Adornee = adorneePart -- Link to the determined Part
-    print(string.format("DEBUG: Creating UI for %s using Adornee: %s", board.Name, adorneePart.Name))
+    -- print(string.format("DEBUG: Creating UI for %s using Adornee: %s", board.Name, adorneePart.Name))
 
     sg.Face = Enum.NormalId.Front
     sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
@@ -105,8 +110,6 @@ local function populateBoard(board)
     gridLayout.VerticalAlignment = Enum.VerticalAlignment.Center
     gridLayout.Parent = container
 
-    -- (Existing categoryKey/category from header block)
-    
     local itemsToDisplay = {}
     if category then
         itemsToDisplay = category.Items
@@ -114,8 +117,8 @@ local function populateBoard(board)
         -- Fallback: Primeras 4 cosas que encuentre
         local count = 0
         for _, cat in pairs(ShopConfig.Categories) do
-            for _, item in ipairs(cat.Items) do
-                table.insert(itemsToDisplay, item)
+            for _, it in ipairs(cat.Items) do
+                table.insert(itemsToDisplay, it)
                 count += 1
                 if count >= 4 then break end
             end
@@ -174,13 +177,31 @@ local function populateBoard(board)
             stroke.Color = isImplemented and (item.Color or Color3.new(1,1,1)) or Color3.fromRGB(80, 80, 80)
             stroke.Thickness = 2
             stroke.Parent = itemCard
+
+            -- Check for permanent ownership or session purchase
+            local isAlreadyOwned = purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true
+
+            if isAlreadyOwned then
+                itemCard.Text = "COMPRADO"
+                itemCard.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                itemCard.TextColor3 = Color3.fromRGB(100, 255, 100)
+            end
             
             -- Direct Click Connection for Fallback Button
              itemCard.MouseButton1Click:Connect(function()
-                 if not isImplemented then return end
-                 -- print("DEBUG: CLICK DETECTED on Fallback Button for", item.Id)
-                 local _success, _msg = BuyItem:InvokeServer(item.Id)
-                 -- print("DEBUG: Purchase result:", success, msg)
+                 if not isImplemented or purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true then return end
+                 local success, msg = BuyItem:InvokeServer(item.Id)
+                 if success then
+                    purchasedItems[item.Id] = true
+                    itemCard.Text = "COMPRADO"
+                    itemCard.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                    itemCard.TextColor3 = Color3.fromRGB(100, 255, 100)
+                 else
+                    local oldText = itemCard.Text
+                    itemCard.Text = msg or "ERROR"
+                    task.wait(1)
+                    itemCard.Text = oldText
+                 end
              end)
         else
             -- Data Binding
@@ -202,31 +223,42 @@ local function populateBoard(board)
                     st.Color = isImplemented and item.Color or Color3.fromRGB(60, 60, 60)
                 end
             end
+
+            -- Check for permanent ownership or session purchase
+            local isAlreadyOwned = purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true
+
+            -- Update state if already purchased
+            if isAlreadyOwned then
+                if buyBtn:IsA("TextLabel") or buyBtn:IsA("TextButton") then
+                    buyBtn.Text = "COMPRADO"
+                    buyBtn.TextColor3 = Color3.new(0, 1, 0)
+                end
+            end
             
             if isImplemented then
                 applyHoverEffect(buyBtn)
                 animateShine(buyBtn)
                 
                 buyBtn.MouseButton1Click:Connect(function()
-                    -- print("DEBUG: CLICK DETECTED on Template Button for", item.Id)
-                    local success, msg = BuyItem:InvokeServer(item.Id)
-                    -- print("DEBUG: Purchase result:", success, msg)
+                    if purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true then return end
                     
-                    local originalText = buyBtn.Text
+                    local success, msg = BuyItem:InvokeServer(item.Id)
+                    
                     if success then
-                        buyBtn.Text = "¡COMPRADO!"
+                        purchasedItems[item.Id] = true
+                        buyBtn.Text = "COMPRADO"
                         buyBtn.TextColor3 = Color3.new(0, 1, 0)
                     else
+                        local originalText = buyBtn.Text
                         buyBtn.Text = msg or "ERROR"
                         buyBtn.TextColor3 = Color3.new(1, 0, 0)
+                        task.delay(1, function()
+                            if buyBtn then
+                                buyBtn.Text = originalText
+                                buyBtn.TextColor3 = Color3.new(1, 1, 1) 
+                            end
+                        end)
                     end
-                    
-                    task.delay(1, function()
-                        if buyBtn then
-                            buyBtn.Text = originalText
-                            buyBtn.TextColor3 = Color3.new(1, 1, 1) 
-                        end
-                    end)
                 end)
             else
                 if buyBtn:IsA("TextButton") then
@@ -237,7 +269,6 @@ local function populateBoard(board)
         end
         
         itemCard.Parent = container
-        -- print("DEBUG: Added item button", item.Id, "to board")
     end
 end
 
@@ -253,14 +284,35 @@ local function discoverAndPopulate()
         if (obj.Name == "ShopBoard" or obj.Name == "TiendaVisual" or string.find(obj.Name, "ShopBoard")) and not CollectionService:HasTag(obj, "TiendaTag") then
             -- Check if it's a Part or MeshPart to be a valid board
             if obj:IsA("BasePart") then
-                print("DEBUG: Found ShopBoard by fallback name:", obj.Name)
+                -- print("DEBUG: Found ShopBoard by fallback name:", obj.Name)
                 task.spawn(populateBoard, obj)
             end
         end
     end
 end
 
-task.wait(2)
+-- Refresh all boards
+local function refreshAllBoards()
+    local tagged = CollectionService:GetTagged("TiendaTag")
+    for _, board in ipairs(tagged) do
+        populateBoard(board)
+    end
+    -- Fallback boards
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if (obj.Name == "ShopBoard" or obj.Name == "TiendaVisual" or string.find(obj.Name, "ShopBoard")) and obj:IsA("BasePart") then
+            populateBoard(obj)
+        end
+    end
+end
+
+-- Reset on Death/Spawn
+player.CharacterAdded:Connect(function()
+    purchasedItems = {} -- Clear purchased items
+    task.wait(1)
+    refreshAllBoards() -- Redraw to remove "COMPRADO" labels
+end)
+
+task.wait(1.5)
 discoverAndPopulate()
 
 CollectionService:GetInstanceAddedSignal("TiendaTag"):Connect(function(instance)

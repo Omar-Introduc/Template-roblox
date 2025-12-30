@@ -10,7 +10,6 @@ local character: Model? = player.Character
 local humanoid: Humanoid?
 local rootPart: BasePart?
 
-local canDoubleJump = false
 local hasDoubleJumped = false
 
 -- Fly Variables
@@ -33,9 +32,9 @@ local function cleanConnections()
 end
 
 local function cleanFlyPhysics()
-	if flyLv then flyLv:Destroy() flyLv = nil end
-	if flyAo then flyAo:Destroy() flyAo = nil end
-	if flyAtt then flyAtt:Destroy() flyAtt = nil end
+	if flyLv then flyLv:Destroy(); flyLv = nil end
+	if flyAo then flyAo:Destroy(); flyAo = nil end
+	if flyAtt then flyAtt:Destroy(); flyAtt = nil end
 end
 
 local function stopFlying()
@@ -110,7 +109,8 @@ local function onJumpRequest()
 	local flyEndAttr = char:GetAttribute("Buff_Fly_End")
 	local hasFly = typeof(flyEndAttr) == "number" and os.time() < (flyEndAttr :: number)
 
-	local hasDoubleJump = char:GetAttribute("Buff_DoubleJump") == true
+	-- Double Jump can be a temporary Buff or a permanent Ownership attribute
+	local hasDoubleJump = char:GetAttribute("Buff_DoubleJump") == true or player:GetAttribute("Owns_DoubleJump") == true
 
 	local state = hum:GetState()
 
@@ -119,12 +119,17 @@ local function onJumpRequest()
 			startFlying()
 		end
 	elseif hasDoubleJump then
-		-- Permite doble salto en salto normal o caída libre
-		if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) and not hasDoubleJumped and canDoubleJump then
+		-- Only allow double jump if in air, not already double jumped, and not currently flying
+		if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) 
+			and not hasDoubleJumped 
+			and not isFlying 
+		then
 			hasDoubleJumped = true
-			hum:ChangeState(Enum.HumanoidStateType.Jumping)
-
-			-- Impulso vertical calculado
+			
+			-- Reset vertical velocity for a consistent jump experience
+			local vel = root.AssemblyLinearVelocity
+			
+			-- Calculate jump power
 			local jumpPower = 0
 			if hum.UseJumpPower then
 				jumpPower = hum.JumpPower
@@ -132,8 +137,22 @@ local function onJumpRequest()
 				jumpPower = math.sqrt(2 * Workspace.Gravity * hum.JumpHeight)
 			end
 
-			local vel = root.AssemblyLinearVelocity
-			root.AssemblyLinearVelocity = Vector3.new(vel.X, jumpPower, vel.Z)
+			-- Apply the jump impulse (slight extra boost for double jump feedback)
+			root.AssemblyLinearVelocity = Vector3.new(vel.X, jumpPower * 1.1, vel.Z)
+			
+			-- Visual Feedback: Small burst of particles or sound could go here
+			local p = Instance.new("ParticleEmitter")
+			p.Transparency = NumberSequence.new(0.5, 1)
+			p.Size = NumberSequence.new(0.5, 0)
+			p.Lifetime = NumberRange.new(0.2, 0.5)
+			p.Rate = 100
+			p.Speed = NumberRange.new(5, 10)
+			p.Parent = root
+			task.delay(0.2, function() p.Enabled = false end)
+			game:GetService("Debris"):AddItem(p, 1)
+
+			-- Force state change to trigger animations
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
 		end
 	end
 end
@@ -148,7 +167,6 @@ local function setupCharacter(newChar: Model)
 	
 	isFlying = false
 	hasDoubleJumped = false
-	canDoubleJump = (hum:GetState() == Enum.HumanoidStateType.Landed)
 	
 	cleanFlyPhysics()
 	cleanConnections()
@@ -156,13 +174,8 @@ local function setupCharacter(newChar: Model)
 	-- State management connections
 	table.insert(characterConnections, hum.StateChanged:Connect(function(_, new: Enum.HumanoidStateType)
 		if new == Enum.HumanoidStateType.Landed then
-			canDoubleJump = true
 			hasDoubleJumped = false
 			if isFlying then stopFlying() end
-		elseif new == Enum.HumanoidStateType.Freefall then
-			-- Coyote time
-			task.wait(0.1)
-			canDoubleJump = true
 		end
 	end))
 
