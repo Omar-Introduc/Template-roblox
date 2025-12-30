@@ -11,7 +11,7 @@ print("🏗️ [MasterBuilder] Iniciando generación de Prefabs...")
 
 -- Lista de módulos constructores a ejecutar
 local builders = {
-	require(BuildersFolder:WaitForChild("ShopBuilder")),
+	require(BuildersFolder:WaitForChild("ShopBuilder_Standard")),
 	require(BuildersFolder:WaitForChild("HUDBuilder"))
 }
 

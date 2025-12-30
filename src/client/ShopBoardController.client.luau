@@ -94,7 +94,7 @@ local function populateStandardBoard(board: BasePart)
     container.BackgroundTransparency = 1 -- ELIMINADO COLOR NEGRO
     container.Parent = sg
 
-    -- Título simple arriba
+    -- Título centrado arriba
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, 0, 0, 60)
     title.BackgroundTransparency = 1
@@ -102,6 +102,7 @@ local function populateStandardBoard(board: BasePart)
     title.Font = Enum.Font.FredokaOne
     title.TextColor3 = COLORS.WHITE
     title.TextSize = 40
+    title.TextXAlignment = Enum.TextXAlignment.Center -- CENTRADO
     title.Parent = container
 
     local gridFrame = Instance.new("Frame")
@@ -248,23 +249,24 @@ local function populateFuturisticBoard(board: BasePart)
     topBar.Parent = main
 
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(0.4, 0, 1, 0)
+    title.Size = UDim2.new(1, 0, 1, 0) -- Ocupa todo el ancho para centrar
     title.Text = "STELLAR PREMIUM"
     title.Font = Enum.Font.FredokaOne
     title.TextColor3 = COLORS.WHITE
-    title.TextSize = 40
-    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextSize = 45
+    title.TextXAlignment = Enum.TextXAlignment.Center -- CENTRADO
     title.BackgroundTransparency = 1
     title.Parent = topBar
 
     local balanceLabel = Instance.new("TextLabel")
-    balanceLabel.Size = UDim2.new(0.4, 0, 1, 0)
-    balanceLabel.Position = UDim2.fromScale(0.6, 0)
+    balanceLabel.Size = UDim2.new(0, 200, 0, 40)
+    balanceLabel.Position = UDim2.new(1, -210, 0.5, 0)
+    balanceLabel.AnchorPoint = Vector2.new(0, 0.5)
     local balVal = player:GetAttribute("Coins")
     balanceLabel.Text = string.format("CR: %d", if typeof(balVal) == "number" then balVal else 0)
     balanceLabel.Font = Enum.Font.GothamBold
     balanceLabel.TextColor3 = COLORS.NEON_BLUE
-    balanceLabel.TextSize = 30
+    balanceLabel.TextSize = 25
     balanceLabel.TextXAlignment = Enum.TextXAlignment.Right
     balanceLabel.BackgroundTransparency = 1
     balanceLabel.Parent = topBar
@@ -274,84 +276,121 @@ local function populateFuturisticBoard(board: BasePart)
         balanceLabel.Text = string.format("CR: %d", if typeof(newVal) == "number" then newVal else 0)
     end)
 
-    -- 3. SIDEBAR (Categories)
-    local sidebar = Instance.new("Frame")
-    sidebar.Name = "Sidebar"
-    sidebar.Size = UDim2.new(0, 180, 1, -120)
-    sidebar.Position = UDim2.fromOffset(20, 100)
-    sidebar.BackgroundColor3 = COLORS.BG_GLASS
-    sidebar.BackgroundTransparency = 0.5
-    createCorner(sidebar, 15)
-    sidebar.Parent = main
+    -- 3. CONTENT AREA (Items - Expanded to fill full width)
+    local contentArea = Instance.new("Frame")
+    contentArea.Name = "ContentArea"
+    contentArea.Size = UDim2.new(1, -40, 1, -120) -- Expandido (antes -230)
+    contentArea.Position = UDim2.fromOffset(20, 100) -- Movido a la izquierda (antes 210)
+    contentArea.BackgroundTransparency = 1
+    contentArea.Parent = main
 
-    local scrollingSidebar = Instance.new("ScrollingFrame")
-    scrollingSidebar.Size = UDim2.new(1, -10, 1, -20)
-    scrollingSidebar.Position = UDim2.fromOffset(5, 10)
-    scrollingSidebar.BackgroundTransparency = 1
-    scrollingSidebar.ScrollBarThickness = 2
-    scrollingSidebar.CanvasSize = UDim2.new(0,0,2,0)
-    scrollingSidebar.Parent = sidebar
-
-    local sideList = Instance.new("UIListLayout")
-    sideList.Padding = UDim.new(0, 10)
-    sideList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    sideList.Parent = scrollingSidebar
-
-    -- 4. CONTENT AREA (Items)
-    local content = Instance.new("Frame")
-    content.Name = "ContentArea"
-    content.Size = UDim2.new(1, -230, 1, -120)
-    content.Position = UDim2.fromOffset(210, 100)
-    content.BackgroundTransparency = 1
-    content.Parent = main
-
-    local grid = Instance.new("UIGridLayout")
-    grid.CellSize = UDim2.new(0.3, 0, 0.45, 0)
-    grid.CellPadding = UDim2.new(0.03, 0, 0.03, 0)
-    grid.Parent = content
+    local scrollingContent = Instance.new("ScrollingFrame")
+    scrollingContent.Size = UDim2.new(1, 0, 1, 0)
+    scrollingContent.BackgroundTransparency = 1
+    scrollingContent.ScrollBarThickness = 4
+    scrollingContent.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollingContent.Parent = contentArea
 
     local catAttrVal = board:GetAttribute("Category")
     local currentCategory: string = if typeof(catAttrVal) == "string" then catAttrVal else "Robux"
 
     local function renderItems(catKey: string)
-        content:ClearAllChildren()
-        grid.Parent = content
+        scrollingContent:ClearAllChildren()
+        
+        local list = Instance.new("UIListLayout")
+        list.Padding = UDim.new(0, 15)
+        list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        list.SortOrder = Enum.SortOrder.LayoutOrder
+        list.Parent = scrollingContent
         
         local category = ShopConfig.Categories[catKey]
         if not category then return end
         
-        for _, item in ipairs(category.Items) do
+        for i, item in ipairs(category.Items) do
+            -- CARTA ESPECIAL (Horizontal - ANCHO OPTIMIZADO)
             local card = Instance.new("Frame")
+            card.Name = "SpecialCard_" .. item.Id
+            card.Size = UDim2.new(0.98, 0, 0, 130) -- Más ancha para aprovechar espacio
             card.BackgroundColor3 = COLORS.BG_GLASS
-            card.BackgroundTransparency = 0.4
+            card.BackgroundTransparency = 0.5
+            card.LayoutOrder = i
             createCorner(card, 15)
-            createStroke(card, item.CurrencyType == "Robux" and COLORS.GOLD or COLORS.NEON_BLUE, 2)
             
+            local stroke = createStroke(card, item.CurrencyType == "Robux" and COLORS.GOLD or COLORS.NEON_BLUE, 3)
+            stroke.Transparency = 0.1
+
+            -- Icon Area
+            local iconFrame = Instance.new("Frame")
+            iconFrame.Size = UDim2.new(0, 90, 0, 90)
+            iconFrame.Position = UDim2.fromOffset(20, 20)
+            iconFrame.BackgroundColor3 = item.Color or COLORS.NEON_PURPLE
+            iconFrame.BackgroundTransparency = 0.3
+            createCorner(iconFrame, 45)
+            createStroke(iconFrame, COLORS.WHITE, 2)
+            iconFrame.Parent = card
+
+            local iconText = Instance.new("TextLabel")
+            iconText.Size = UDim2.new(1, 0, 1, 0)
+            iconText.Text = "★"
+            iconText.TextColor3 = COLORS.WHITE
+            iconText.TextSize = 45
+            iconText.BackgroundTransparency = 1
+            iconText.Parent = iconFrame
+
+            -- Info Area
+            local info = Instance.new("Frame")
+            info.Size = UDim2.new(0.5, 0, 1, 0)
+            info.Position = UDim2.fromOffset(130, 0)
+            info.BackgroundTransparency = 1
+            info.Parent = card
+
             local name = Instance.new("TextLabel")
-            name.Size = UDim2.new(1, -10, 0.4, 0)
-            name.Position = UDim2.fromOffset(5, 5)
-            name.Text = item.Name
-            name.Font = Enum.Font.GothamBold
+            name.Size = UDim2.new(1, 0, 0.4, 0)
+            name.Position = UDim2.fromOffset(0, 20)
+            name.Text = item.Name:upper()
+            name.Font = Enum.Font.FredokaOne
             name.TextColor3 = COLORS.WHITE
-            name.TextSize = 18
-            name.TextWrapped = true
-            name.Parent = card
+            name.TextSize = 32
+            name.TextXAlignment = Enum.TextXAlignment.Left
+            name.BackgroundTransparency = 1
+            name.Parent = info
+
+            local desc = Instance.new("TextLabel")
+            desc.Size = UDim2.new(1, 0, 0.3, 0)
+            desc.Position = UDim2.fromOffset(0, 60)
+            desc.Text = "ITEM ESPECIAL PREMIUM"
+            desc.Font = Enum.Font.GothamBold
+            desc.TextColor3 = COLORS.TEXT_DIM
+            desc.TextSize = 16
+            desc.TextXAlignment = Enum.TextXAlignment.Left
+            desc.BackgroundTransparency = 1
+            desc.Parent = info
+
+            -- Buy Area
+            local buyArea = Instance.new("Frame")
+            buyArea.Size = UDim2.new(0, 200, 1, 0)
+            buyArea.Position = UDim2.new(1, -220, 0, 0)
+            buyArea.BackgroundTransparency = 1
+            buyArea.Parent = card
 
             local buyBtn = Instance.new("TextButton")
-            buyBtn.Size = UDim2.new(0.8, 0, 0.25, 0)
-            buyBtn.Position = UDim2.fromScale(0.1, 0.7)
-            buyBtn.BackgroundColor3 = COLORS.NEON_BLUE
+            buyBtn.Size = UDim2.new(1, 0, 0, 65)
+            buyBtn.Position = UDim2.fromScale(0, 0.5)
+            buyBtn.AnchorPoint = Vector2.new(0, 0.5)
+            buyBtn.BackgroundColor3 = item.CurrencyType == "Robux" and COLORS.GOLD or COLORS.NEON_BLUE
+            buyBtn.BackgroundTransparency = 0.1
             buyBtn.Text = item.Price .. (item.CurrencyType == "Robux" and " R$" or " CR")
             buyBtn.Font = Enum.Font.FredokaOne
-            buyBtn.TextColor3 = COLORS.WHITE
-            buyBtn.TextSize = 14
-            createCorner(buyBtn, 8)
+            buyBtn.TextColor3 = COLORS.BG_MAIN
+            buyBtn.TextSize = 24
+            createCorner(buyBtn, 12)
             applyHover(buyBtn)
-            buyBtn.Parent = card
+            buyBtn.Parent = buyArea
 
             if purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true then
                 buyBtn.Text = "LISTO"
                 buyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+                buyBtn.TextColor3 = COLORS.WHITE
             end
 
             buyBtn.MouseButton1Click:Connect(function()
@@ -364,6 +403,7 @@ local function populateFuturisticBoard(board: BasePart)
                          purchasedItems[item.Id] = true
                          buyBtn.Text = "LISTO"
                          buyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+                         buyBtn.TextColor3 = COLORS.WHITE
                     else
                          buyBtn.Text = tostring(err or "ERROR")
                          task.wait(1)
@@ -372,24 +412,9 @@ local function populateFuturisticBoard(board: BasePart)
                 end
             end)
 
-            card.Parent = content
+            card.Parent = scrollingContent
         end
-    end
-
-    -- Sidebar Buttons
-    for key, catData in pairs(ShopConfig.Categories) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0.9, 0, 0, 40)
-        btn.BackgroundColor3 = (key == currentCategory) and COLORS.NEON_BLUE or COLORS.BG_GLASS
-        btn.Text = tostring(catData.Title or key)
-        btn.Font = Enum.Font.GothamBold
-        btn.TextColor3 = COLORS.WHITE
-        createCorner(btn, 10)
-        btn.Parent = scrollingSidebar
-        btn.MouseButton1Click:Connect(function()
-            currentCategory = key
-            renderItems(key)
-        end)
+        scrollingContent.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y + 20)
     end
 
     renderItems(currentCategory)

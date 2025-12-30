@@ -8,7 +8,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local MovementService = require(Shared:WaitForChild("MovementService"))
 local PlatformSpawner = require(Shared:WaitForChild("PlatformSpawner"))
 local FeedbackService = require(Shared:WaitForChild("FeedbackService"))
-local AssetScanner = require(Shared:WaitForChild("AssetScanner"))
+local AssetScanner = require(script.Parent:WaitForChild("AssetScanner"))
 local GameConfig = require(Shared:WaitForChild("GameConfig"))
 
 local GameManager = {}
