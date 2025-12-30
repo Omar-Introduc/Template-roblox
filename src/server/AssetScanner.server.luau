@@ -64,22 +64,26 @@ local function scanMap()
         ["TiendaTag_Movement"] = "Movement",
         ["TiendaTag_Aero"] = "Aero",
         ["TiendaTag_Survival"] = "Survival",
-        ["TiendaTag_Economy"] = "Economy"
+        ["TiendaTag_Economy"] = "Economy",
+        ["TiendaTag_Robux"] = "Robux"
     }
 
     local allShopTags = {"TiendaTag"}
     for tag, _ in pairs(categoryTags) do table.insert(allShopTags, tag) end
 
+    local BuildersFolder = script.Parent:WaitForChild("Builders", 5)
+    local ShopBuilderRobux = BuildersFolder and require(BuildersFolder:WaitForChild("ShopBuilder_Robux"))
+    local ShopBuilderStandard = BuildersFolder and require(BuildersFolder:WaitForChild("ShopBuilder_Standard"))
+
     for _, tag in ipairs(allShopTags) do
         for _, t in ipairs(CollectionService:GetTagged(tag)) do
             if t:IsDescendantOf(workspace) and not table.find(shopsFound, t) then
-                print("🛍️ [Scanner] Tienda detectada por Tag: " .. t.Name .. " (Tag: " .. tag .. ")")
-                
-                -- Asignar categoría basada en el tag
+                -- Asignar categoría basada en el tag solo si se encuentra un tag específico
                 local category = categoryTags[tag]
+                local _existingCategory = t:GetAttribute("Category")
+
                 if category then
                     t:SetAttribute("Category", category)
-                    print("📌 Categoría asignada: " .. category)
                 end
                 
                 -- IMPORTANT: Client looks for "TiendaTag", so we MUST add it if searching by specific tag
@@ -89,21 +93,15 @@ local function scanMap()
 
                 table.insert(shopsFound, t)
                 
-                -- ESTÉTICA "VIDRIO" (Solo propiedades visuales)
+                -- LÓGICA DE CONSTRUCCIÓN SEGÚN CATEGORÍA
                 local mainPart = t:IsA("BasePart") and t or (t:FindFirstChild("Display", true) or t.PrimaryPart or t:FindFirstChildWhichIsA("BasePart", true))
-                if mainPart then
-                    mainPart.Material = Enum.Material.Glass
-                    mainPart.Transparency = 0.8 -- Más transparente para efecto vidrio fino
-                    mainPart.CastShadow = false
-                    
-                    -- Borde Neón Estético
-                    local selection = mainPart:FindFirstChild("NeonBorder") or Instance.new("SelectionBox")
-                    selection.Name = "NeonBorder"
-                    selection.Adornee = mainPart
-                    selection.Color3 = Color3.fromRGB(0, 255, 255)
-                    selection.LineThickness = 0.02
-                    selection.Transparency = 0.5
-                    selection.Parent = mainPart
+                
+                if not mainPart then continue end
+
+                if category == "Robux" and ShopBuilderRobux then
+                    ShopBuilderRobux.BuildFuturisticKiosk(mainPart)
+                elseif ShopBuilderStandard then
+                    ShopBuilderStandard.BuildStandardPanel(mainPart)
                 end
             end
         end

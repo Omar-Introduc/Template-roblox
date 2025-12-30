@@ -1,7 +1,7 @@
 -- src/client/GlobalLeaderboardController.client.luau
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
-local Players = game:GetService("Players")
+local _Players = game:GetService("Players")
 
 local Events = ReplicatedStorage:WaitForChild("Events")
 local GetTopPlayers = Events:WaitForChild("GetTopPlayers")
@@ -53,22 +53,44 @@ local function updateBoard(board: BasePart)
 	contentList.Parent = content
 
 	-- Fetch Data
-	local success, topPlayers = pcall(function()
+	local success, response = pcall(function()
 		return GetTopPlayers:InvokeServer()
 	end)
 
-	if success and typeof(topPlayers) == "table" then
+	if success and typeof(response) == "table" then
+		local topPlayers = response.Top or {}
+		local personal = response.Personal or {Rank = "---", Score = 0}
+
 		for i, data in ipairs(topPlayers) do
 			local row = Instance.new("TextLabel")
 			row.Size = UDim2.new(1, 0, 0.1, 0)
 			row.BackgroundTransparency = 1
 			row.Font = Enum.Font.FredokaOne
 			row.Text = string.format("#%d - %s: %d CR", i, data.Name, data.Score)
-			row.TextColor3 = (i == 1) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+			row.TextColor3 = (i == 1) and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(200, 200, 200)
 			row.TextSize = 25
 			row.TextXAlignment = Enum.TextXAlignment.Left
 			row.Parent = content
 		end
+
+		-- SECCIÓN PERSONAL AL FINAL
+		local personalLine = Instance.new("Frame")
+		personalLine.Size = UDim2.new(1, 0, 0.01, 0)
+		personalLine.Position = UDim2.new(0, 0, 1.05, 0)
+		personalLine.BackgroundColor3 = Color3.fromRGB(255, 215, 0)
+		personalLine.BorderSizePixel = 0
+		personalLine.Parent = content
+
+		local pRow = Instance.new("TextLabel")
+		pRow.Size = UDim2.new(1, 0, 0.15, 0)
+		pRow.Position = UDim2.new(0, 0, 1.1, 0)
+		pRow.BackgroundTransparency = 1
+		pRow.Font = Enum.Font.FredokaOne
+		pRow.Text = string.format("TU RANGO: #%s | %d CR", tostring(personal.Rank), personal.Score)
+		pRow.TextColor3 = Color3.fromRGB(0, 255, 255)
+		pRow.TextSize = 28
+		pRow.TextXAlignment = Enum.TextXAlignment.Center
+		pRow.Parent = content
 	else
 		local err = Instance.new("TextLabel")
 		err.Size = UDim2.new(1, 0, 0.5, 0)

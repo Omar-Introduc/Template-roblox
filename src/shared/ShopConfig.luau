@@ -31,10 +31,21 @@ return {
         Economy = {
             Title = "💰 ECONOMÍA",
             Items = {
-                { Id = "DoublePoints", Name = "Puntos X2 (1m)", Price = 100, Color = Color3.fromRGB(255, 150, 0), Type = "Multiplier", Value = 2, Implemented = true },
-                { Id = "TriplePoints", Name = "Puntos X3 (1m)", Price = 250, Color = Color3.fromRGB(255, 100, 0), Type = "Multiplier", Value = 3, Implemented = true },
-                { Id = "PointShield", Name = "Seguro Puntos", Price = 150, Color = Color3.fromRGB(200, 150, 255), Type = "SavePoints", Implemented = false },
-                { Id = "TaxExempt", Name = "Sin Impuestos", Price = 300, Color = Color3.fromRGB(150, 255, 200), Type = "Discount", Implemented = false },
+                { Id = "DoublePoints", Name = "Puntos X2 (1m)", Price = 100, Color = Color3.fromRGB(255, 150, 0), Type = "Multiplier", Value = 2, Implemented = true, CurrencyType = "CR" },
+                { Id = "TriplePoints", Name = "Puntos X3 (1m)", Price = 250, Color = Color3.fromRGB(255, 100, 0), Type = "Multiplier", Value = 3, Implemented = true, CurrencyType = "CR" },
+                { Id = "PointShield", Name = "Seguro Puntos", Price = 150, Color = Color3.fromRGB(200, 150, 255), Type = "SavePoints", Implemented = false, CurrencyType = "CR" },
+                { Id = "TaxExempt", Name = "Sin Impuestos", Price = 300, Color = Color3.fromRGB(150, 255, 200), Type = "Discount", Implemented = false, CurrencyType = "CR" },
+            }
+        },
+        Robux = {
+            Title = "💎 TIENDA ROBUX",
+            Items = {
+                { Id = "PermX2", Name = "X2 Puntos (Eterno)", Price = 499, Color = Color3.fromRGB(85, 255, 127), Type = "Multiplier", Value = 2, Implemented = true, CurrencyType = "Robux", GamePassId = 0 },
+                { Id = "RobuxItem2", Name = "Próximamente", Price = 0, Color = Color3.fromRGB(150, 150, 150), Type = "None", Implemented = false, CurrencyType = "Robux" },
+                { Id = "RobuxItem3", Name = "Próximamente", Price = 0, Color = Color3.fromRGB(150, 150, 150), Type = "None", Implemented = false, CurrencyType = "Robux" },
+                { Id = "RobuxItem4", Name = "Próximamente", Price = 0, Color = Color3.fromRGB(150, 150, 150), Type = "None", Implemented = false, CurrencyType = "Robux" },
+                { Id = "RobuxItem5", Name = "Próximamente", Price = 0, Color = Color3.fromRGB(150, 150, 150), Type = "None", Implemented = false, CurrencyType = "Robux" },
+                { Id = "RobuxItem6", Name = "Próximamente", Price = 0, Color = Color3.fromRGB(150, 150, 150), Type = "None", Implemented = false, CurrencyType = "Robux" },
             }
         }
     }

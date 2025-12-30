@@ -101,16 +101,27 @@ function ShopService.ApplyEffect(character, item)
 		character:SetAttribute("Buff_DoubleJump", true)
 	elseif itemType == "Multiplier" then
 		-- Multiplier
-		local duration = 60 -- 1 minuto
+		local isPermanent = string.find(item.Name or "", "Eterno") ~= nil or item.Id == "PermX2"
+		
 		character:SetAttribute("PointMultiplier", value)
-		character:SetAttribute("Buff_Multiplier_End", now + duration)
+		
+		if not isPermanent then
+			local duration = 60 -- 1 minuto
+			character:SetAttribute("Buff_Multiplier_End", now + duration)
 
-		task.delay(duration, function()
-			if character and character:IsDescendantOf(workspace) then
-				character:SetAttribute("PointMultiplier", 1)
-				character:SetAttribute("Buff_Multiplier_End", nil)
-			end
-		end)
+			task.delay(duration, function()
+				if character and character:IsDescendantOf(workspace) then
+					-- Solo si no tiene un multiplicador permanente que lo sobreescriba
+					local player_ = Players:GetPlayerFromCharacter(character)
+					if not (player_ and player_:GetAttribute("Owns_PermX2") == true) then
+						character:SetAttribute("PointMultiplier", 1)
+						character:SetAttribute("Buff_Multiplier_End", nil)
+					end
+				end
+			end)
+		else
+			character:SetAttribute("Buff_Multiplier_End", 9999999999) -- Representa infinito
+		end
 	end
 end
 

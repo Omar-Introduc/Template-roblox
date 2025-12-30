@@ -1,5 +1,6 @@
 -- src/client/ShopBoardController.client.luau
--- Controlador de pantallas físicas (SurfaceGui) - VERSIÓN CANVAS FIJO (4 ITEMS)
+--!strict
+-- Dual-Style Shop Controller (Futuristic Robux vs Standard CR)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -7,315 +8,434 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 
 local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 local ShopConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ShopConfig"))
 local BuyItem = ReplicatedStorage:WaitForChild("Events"):WaitForChild("BuyItem")
 
-local ShopUI_Folder = ReplicatedStorage:FindFirstChild("Assets") and ReplicatedStorage.Assets:FindFirstChild("ShopUI")
-
--- Tracking of purchased items for current life
 local purchasedItems: { [string]: boolean } = {}
 
--- MICRO-INTERACCIONES
-local function applyHoverEffect(button)
-    local originalSize = button.Size
-    local hoverSize = UDim2.new(originalSize.X.Scale * 1.05, originalSize.X.Offset, originalSize.Y.Scale * 1.05, originalSize.Y.Offset)
-    
+-- DESIGN TOKENS
+local COLORS = {
+    BG_MAIN = Color3.fromRGB(15, 15, 30),
+    BG_GLASS = Color3.fromRGB(25, 25, 50),
+    NEON_BLUE = Color3.fromRGB(0, 255, 255),
+    NEON_PURPLE = Color3.fromRGB(180, 0, 255),
+    GOLD = Color3.fromRGB(255, 215, 0),
+    WHITE = Color3.new(1, 1, 1),
+    TEXT_DIM = Color3.fromRGB(180, 180, 200)
+}
+
+-- UTILS
+local function createCorner(parent: Instance, radius: number?)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius or 12)
+    corner.Parent = parent
+    return corner
+end
+
+local function createStroke(parent: Instance, color: Color3, thickness: number?)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = color
+    stroke.Thickness = thickness or 2
+    stroke.Transparency = 0.3
+    stroke.Parent = parent
+    return stroke
+end
+
+local function applyHover(button: GuiButton)
+    local originalColor = button.BackgroundColor3
     button.MouseEnter:Connect(function()
-        if purchasedItems[button.Parent.Name] then return end
-        TweenService:Create(button, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = hoverSize}):Play()
+        TweenService:Create(button, TweenInfo.new(0.2), {
+            BackgroundTransparency = 0.2,
+            BackgroundColor3 = COLORS.NEON_BLUE:Lerp(originalColor, 0.7)
+        }):Play()
     end)
-    
     button.MouseLeave:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = originalSize}):Play()
+        TweenService:Create(button, TweenInfo.new(0.2), {
+            BackgroundTransparency = 0.4,
+            BackgroundColor3 = originalColor
+        }):Play()
     end)
 end
 
-local function animateShine(button)
-    local gradient = button:FindFirstChildWhichIsA("UIGradient")
-    if not gradient then return end
+-- ==========================================
+-- LÓGICA DE TIENDA ESTÁNDAR (LAYOUT ORIGINAL)
+-- ==========================================
+local function populateStandardBoard(board: BasePart)
+    local sgName = "StandardShop_" .. board.Name
+    local foundSg = playerGui:FindFirstChild(sgName)
+    local sg: SurfaceGui
     
-    task.spawn(function()
-        while button and button.Parent do
-            if purchasedItems[button.Parent.Name] then break end
-            gradient.Offset = Vector2.new(-1, 0)
-            local tween = TweenService:Create(gradient, TweenInfo.new(1.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)})
-            tween:Play()
-            tween.Completed:Wait()
-            task.wait(3)
-        end
-    end)
-end
-
--- POBLAR UNA PANTALLA (SIN BARRA DE DESPLAZAMIENTO)
-local function populateBoard(board)
-    -- Determine the actual Adornee Part (SurfaceGui needs a BasePart, not a Model)
-    local adorneePart = board
-    if board:IsA("Model") then
-        adorneePart = board:FindFirstChild("Display") or board.PrimaryPart or board:FindFirstChildWhichIsA("BasePart", true)
-    end
-    
-    if not adorneePart or not adorneePart:IsA("BasePart") then
-        warn("⚠️ [ShopBoardController] No valid Adornee Part found for board:", board.Name)
-        return
+    if foundSg and foundSg:IsA("SurfaceGui") then
+        sg = foundSg
+    else
+        sg = Instance.new("SurfaceGui")
+        sg.Name = sgName
+        sg.Parent = playerGui
     end
 
-    -- Use PlayerGui for reliable local input handling
-    local playerGui = player:WaitForChild("PlayerGui")
-    local sgName = "ShopSurfaceUI_" .. board.Name
-    local sg = playerGui:FindFirstChild(sgName) or Instance.new("SurfaceGui")
-    
-    sg.Name = sgName
-    sg.Adornee = adorneePart -- Link to the determined Part
-    -- print(string.format("DEBUG: Creating UI for %s using Adornee: %s", board.Name, adorneePart.Name))
-
+    sg.Adornee = board
     sg.Face = Enum.NormalId.Front
     sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
     sg.PixelsPerStud = 50
-    sg.AlwaysOnTop = true -- FORCE ON TOP to prevent occlusion blocking clicks
-    sg.Parent = playerGui 
+    sg.AlwaysOnTop = true
     sg.ResetOnSpawn = false
-    
     sg:ClearAllChildren()
-    
-    -- Usamos un FRAME normal en lugar de ScrollingFrame para un canvas fijo
-    local container = Instance.new("Frame")
-    container.Name = "ItemsContainer"
-    container.Size = UDim2.new(1, -20, 0.8, -20) -- Leave space for header
-    container.Position = UDim2.new(0.5, 0, 0.58, 0)
-    container.AnchorPoint = Vector2.new(0.5, 0.5)
-    container.BackgroundTransparency = 1 
-    container.Parent = sg
 
-    local categoryKey = board:GetAttribute("Category")
+    local catKeyVal = board:GetAttribute("Category")
+    local categoryKey: string = if typeof(catKeyVal) == "string" then catKeyVal else "Movement"
     local category = ShopConfig.Categories[categoryKey]
 
-    -- HEADER TITULO
-    local header = Instance.new("TextLabel")
-    header.Name = "CategoryHeader"
-    header.Size = UDim2.new(1, -40, 0.15, 0)
-    header.Position = UDim2.new(0.5, 0, 0.05, 0)
-    header.AnchorPoint = Vector2.new(0.5, 0)
-    header.BackgroundTransparency = 1
-    header.Font = Enum.Font.FredokaOne
-    header.TextSize = 35
-    header.TextColor3 = Color3.new(1, 1, 1)
-    header.TextStrokeTransparency = 0.5
-    header.Text = category and category.Title or "TIENDA"
-    header.Parent = sg
-    
-    local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.48, 0, 0.48, 0)
-    gridLayout.CellPadding = UDim2.new(0.04, 0, 0.04, 0)
-    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    gridLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    gridLayout.Parent = container
+    -- Contenedor Principal (Transparencia Total)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, -10, 1, -10)
+    container.Position = UDim2.fromScale(0.5, 0.5)
+    container.AnchorPoint = Vector2.new(0.5, 0.5)
+    container.BackgroundTransparency = 1 -- ELIMINADO COLOR NEGRO
+    container.Parent = sg
 
-    local itemsToDisplay = {}
+    -- Título simple arriba
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 60)
+    title.BackgroundTransparency = 1
+    title.Text = (category and category.Title or tostring(categoryKey)):upper()
+    title.Font = Enum.Font.FredokaOne
+    title.TextColor3 = COLORS.WHITE
+    title.TextSize = 40
+    title.Parent = container
+
+    local gridFrame = Instance.new("Frame")
+    gridFrame.Size = UDim2.new(1, -40, 1, -80)
+    gridFrame.Position = UDim2.fromOffset(20, 70)
+    gridFrame.BackgroundTransparency = 1
+    gridFrame.Parent = container
+
+    local grid = Instance.new("UIGridLayout")
+    grid.CellSize = UDim2.new(0.48, -10, 0.48, -10) -- REJILLA 2x2
+    grid.CellPadding = UDim2.new(0.04, 0, 0.04, 0)
+    grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    grid.SortOrder = Enum.SortOrder.LayoutOrder
+    grid.Parent = gridFrame
+
     if category then
-        itemsToDisplay = category.Items
-    else
-        -- Fallback: Primeras 4 cosas que encuentre
-        local count = 0
-        for _, cat in pairs(ShopConfig.Categories) do
-            for _, it in ipairs(cat.Items) do
-                table.insert(itemsToDisplay, it)
-                count += 1
-                if count >= 4 then break end
-            end
-            if count >= 4 then break end
-        end
-    end
-
-    local template = (ShopUI_Folder and ShopUI_Folder:FindFirstChild("ItemTemplate"))
-
-    for i = 1, math.min(#itemsToDisplay, 4) do
-        local item = itemsToDisplay[i]
-        local itemCard = template and template:Clone() or Instance.new("TextButton")
-        itemCard.Name = item.Id
-        itemCard.Active = true -- Ensure it catches input
-        
-        -- OVERLAY DE PRÓXIMAMENTE
-        local isImplemented = (item.Implemented ~= false)
-        if not isImplemented then
-            local overlay = Instance.new("Frame")
-            overlay.Name = "ComingSoonOverlay"
-            overlay.Size = UDim2.new(1, 4, 1, 4)
-            overlay.Position = UDim2.new(0.5, 0, 0.5, 0)
-            overlay.AnchorPoint = Vector2.new(0.5, 0.5)
-            overlay.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-            overlay.BackgroundTransparency = 0.4
-            overlay.ZIndex = 10
-            overlay.Parent = itemCard
+        for i, item in ipairs(category.Items) do
+            local card = Instance.new("Frame")
+            card.BackgroundColor3 = item.Color or Color3.fromRGB(100, 100, 100)
+            card.BackgroundTransparency = 1 -- TRANSPARENCIA 1 (VIDRIO)
+            card.LayoutOrder = i
+            createCorner(card, 12)
             
-            local overlayCorner = Instance.new("UICorner")
-            overlayCorner.CornerRadius = UDim.new(0, 8)
-            overlayCorner.Parent = overlay
+            -- Borde del color del Item para dar forma
+            local stroke = createStroke(card, item.Color or COLORS.WHITE, 3)
+            stroke.Transparency = 0.2
 
-            local msgLabel = Instance.new("TextLabel")
-            msgLabel.Size = UDim2.new(1, 0, 1, 0)
-            msgLabel.BackgroundTransparency = 1
-            msgLabel.Font = Enum.Font.FredokaOne
-            msgLabel.Text = "PRÓXIMAMENTE"
-            msgLabel.TextColor3 = Color3.new(1, 1, 1)
-            msgLabel.TextScaled = true
-            msgLabel.Rotation = -15
-            msgLabel.ZIndex = 11
-            msgLabel.Parent = overlay
-            
-            itemCard.AutoButtonColor = false
-        end
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(1, -20, 0, 70)
+            nameLabel.Position = UDim2.fromOffset(10, 10)
+            nameLabel.Text = item.Name
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.TextColor3 = COLORS.WHITE
+            nameLabel.TextSize = 24 -- TEXTO MÁS GRANDE
+            nameLabel.TextWrapped = true
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Parent = card
 
-        if not template then
-            itemCard.Text = item.Name .. "\n" .. item.Price .. " CR"
-            itemCard.BackgroundColor3 = isImplemented and (item.Color or Color3.fromRGB(50, 50, 50)) or Color3.fromRGB(30, 30, 30)
-            itemCard.BackgroundTransparency = 0.3
-            itemCard.Font = Enum.Font.FredokaOne
-            itemCard.TextColor3 = isImplemented and Color3.new(1,1,1) or Color3.fromRGB(150, 150, 150)
-            itemCard.TextScaled = true
-            
-            local stroke = Instance.new("UIStroke")
-            stroke.Color = isImplemented and (item.Color or Color3.new(1,1,1)) or Color3.fromRGB(80, 80, 80)
-            stroke.Thickness = 2
-            stroke.Parent = itemCard
-
-            -- Check for permanent ownership or session purchase
-            local isAlreadyOwned = purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true
-
-            if isAlreadyOwned then
-                itemCard.Text = "COMPRADO"
-                itemCard.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-                itemCard.TextColor3 = Color3.fromRGB(100, 255, 100)
-            end
-            
-            -- Direct Click Connection for Fallback Button
-             itemCard.MouseButton1Click:Connect(function()
-                 if not isImplemented or purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true then return end
-                 local success, msg = BuyItem:InvokeServer(item.Id)
-                 if success then
-                    purchasedItems[item.Id] = true
-                    itemCard.Text = "COMPRADO"
-                    itemCard.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-                    itemCard.TextColor3 = Color3.fromRGB(100, 255, 100)
-                 else
-                    local oldText = itemCard.Text
-                    itemCard.Text = msg or "ERROR"
-                    task.wait(1)
-                    itemCard.Text = oldText
-                 end
-             end)
-        else
-            -- Data Binding
-            local titleLabel = itemCard:FindFirstChild("ItemName", true)
-            local priceLabel = itemCard:FindFirstChild("Price", true)
-            local buyBtn = itemCard:FindFirstChild("BuyButton", true) or itemCard
-            
-            if titleLabel then titleLabel.Text = item.Name end
-            if priceLabel then priceLabel.Text = item.Price .. " CR" end
-            
-            if item.Color then
-                local bg = itemCard:FindFirstChild("Background", true) or itemCard
-                local st = itemCard:FindFirstChildOfClass("UIStroke", true)
+            if item.Implemented == false then
+                -- ESTILO PRÓXIMAMENTE
+                local soon = Instance.new("TextLabel")
+                soon.Size = UDim2.new(1, 0, 0.3, 0)
+                soon.Position = UDim2.fromScale(0, 0.5)
+                soon.Text = "PRÓXIMAMENTE"
+                soon.Font = Enum.Font.FredokaOne
+                soon.TextColor3 = Color3.fromRGB(200, 200, 200)
+                soon.TextSize = 22 -- TEXTO MÁS GRANDE
+                soon.BackgroundTransparency = 1
+                soon.Parent = card
                 
-                if bg:IsA("GuiObject") then 
-                    bg.BackgroundColor3 = isImplemented and item.Color or Color3.fromRGB(40, 40, 40)
-                end
-                if st then 
-                    st.Color = isImplemented and item.Color or Color3.fromRGB(60, 60, 60)
-                end
-            end
+                stroke.Color = Color3.fromRGB(80, 80, 80)
+                nameLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+            else
+                local priceLabel = Instance.new("TextLabel")
+                priceLabel.Size = UDim2.new(1, 0, 0, 40)
+                priceLabel.Position = UDim2.fromScale(0, 0.45)
+                priceLabel.Text = tostring(item.Price) .. " CR"
+                priceLabel.Font = Enum.Font.FredokaOne
+                priceLabel.TextColor3 = COLORS.WHITE
+                priceLabel.TextSize = 35 -- PRECIO MÁS GRANDE
+                priceLabel.BackgroundTransparency = 1
+                priceLabel.Parent = card
 
-            -- Check for permanent ownership or session purchase
-            local isAlreadyOwned = purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true
+                local buyBtn = Instance.new("TextButton")
+                buyBtn.Size = UDim2.new(0.9, 0, 0, 65) -- BOTÓN MUCHO MÁS GRANDE
+                buyBtn.Position = UDim2.fromScale(0.05, 0.68)
+                buyBtn.BackgroundColor3 = item.Color or COLORS.NEON_BLUE
+                buyBtn.BackgroundTransparency = 0.2
+                buyBtn.Text = "COMPRAR"
+                buyBtn.Font = Enum.Font.FredokaOne
+                buyBtn.TextColor3 = COLORS.WHITE
+                buyBtn.TextSize = 24 -- LETRAS MÁS GRANDES
+                createCorner(buyBtn, 10)
+                buyBtn.Parent = card
 
-            -- Update state if already purchased
-            if isAlreadyOwned then
-                if buyBtn:IsA("TextLabel") or buyBtn:IsA("TextButton") then
-                    buyBtn.Text = "COMPRADO"
-                    buyBtn.TextColor3 = Color3.new(0, 1, 0)
+                if purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true then
+                    buyBtn.Text = "LISTO"
+                    buyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+                    buyBtn.BackgroundTransparency = 0
                 end
-            end
-            
-            if isImplemented then
-                applyHoverEffect(buyBtn)
-                animateShine(buyBtn)
-                
+
                 buyBtn.MouseButton1Click:Connect(function()
                     if purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true then return end
-                    
                     local success, msg = BuyItem:InvokeServer(item.Id)
-                    
                     if success then
                         purchasedItems[item.Id] = true
-                        buyBtn.Text = "COMPRADO"
-                        buyBtn.TextColor3 = Color3.new(0, 1, 0)
+                        buyBtn.Text = "LISTO"
+                        buyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
                     else
-                        local originalText = buyBtn.Text
-                        buyBtn.Text = msg or "ERROR"
-                        buyBtn.TextColor3 = Color3.new(1, 0, 0)
-                        task.delay(1, function()
-                            if buyBtn then
-                                buyBtn.Text = originalText
-                                buyBtn.TextColor3 = Color3.new(1, 1, 1) 
-                            end
-                        end)
+                        buyBtn.Text = tostring(msg or "ERROR")
+                        task.wait(1)
+                        buyBtn.Text = "COMPRAR"
                     end
                 end)
-            else
-                if buyBtn:IsA("TextButton") then
-                    buyBtn.Text = "BLOQUEADO"
-                    buyBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-                end
             end
+
+            card.Parent = gridFrame
+        end
+    end
+end
+
+-- ==========================================
+-- LÓGICA DE TIENDA FUTURISTA (ROBUX ONLY)
+-- ==========================================
+local function populateFuturisticBoard(board: BasePart)
+    local sgName = "FuturisticShop_" .. board.Name
+    local foundSg = playerGui:FindFirstChild(sgName)
+    local sg: SurfaceGui
+    
+    if foundSg and foundSg:IsA("SurfaceGui") then
+        sg = foundSg
+    else
+        sg = Instance.new("SurfaceGui")
+        sg.Name = sgName
+        sg.Parent = playerGui
+    end
+
+    sg.Adornee = board
+    sg.Face = Enum.NormalId.Front
+    sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+    sg.PixelsPerStud = 50
+    sg.AlwaysOnTop = true
+    sg.ResetOnSpawn = false
+    sg:ClearAllChildren()
+
+    -- 1. MAIN CANVAS (Glassmorphism)
+    local main = Instance.new("Frame")
+    main.Name = "MainFrame"
+    main.Size = UDim2.new(1, -20, 1, -20)
+    main.Position = UDim2.fromScale(0.5, 0.5)
+    main.AnchorPoint = Vector2.new(0.5, 0.5)
+    main.BackgroundColor3 = COLORS.BG_MAIN
+    main.BackgroundTransparency = 0.2
+    createCorner(main, 20)
+    createStroke(main, COLORS.NEON_PURPLE, 3)
+    main.Parent = sg
+
+    -- 2. TOP BAR (Title & Info)
+    local topBar = Instance.new("Frame")
+    topBar.Name = "TopBar"
+    topBar.Size = UDim2.new(1, -40, 0, 80)
+    topBar.Position = UDim2.fromOffset(20, 20)
+    topBar.BackgroundTransparency = 1
+    topBar.Parent = main
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(0.4, 0, 1, 0)
+    title.Text = "STELLAR PREMIUM"
+    title.Font = Enum.Font.FredokaOne
+    title.TextColor3 = COLORS.WHITE
+    title.TextSize = 40
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.BackgroundTransparency = 1
+    title.Parent = topBar
+
+    local balanceLabel = Instance.new("TextLabel")
+    balanceLabel.Size = UDim2.new(0.4, 0, 1, 0)
+    balanceLabel.Position = UDim2.fromScale(0.6, 0)
+    local balVal = player:GetAttribute("Coins")
+    balanceLabel.Text = string.format("CR: %d", if typeof(balVal) == "number" then balVal else 0)
+    balanceLabel.Font = Enum.Font.GothamBold
+    balanceLabel.TextColor3 = COLORS.NEON_BLUE
+    balanceLabel.TextSize = 30
+    balanceLabel.TextXAlignment = Enum.TextXAlignment.Right
+    balanceLabel.BackgroundTransparency = 1
+    balanceLabel.Parent = topBar
+    
+    player:GetAttributeChangedSignal("Coins"):Connect(function()
+        local newVal = player:GetAttribute("Coins")
+        balanceLabel.Text = string.format("CR: %d", if typeof(newVal) == "number" then newVal else 0)
+    end)
+
+    -- 3. SIDEBAR (Categories)
+    local sidebar = Instance.new("Frame")
+    sidebar.Name = "Sidebar"
+    sidebar.Size = UDim2.new(0, 180, 1, -120)
+    sidebar.Position = UDim2.fromOffset(20, 100)
+    sidebar.BackgroundColor3 = COLORS.BG_GLASS
+    sidebar.BackgroundTransparency = 0.5
+    createCorner(sidebar, 15)
+    sidebar.Parent = main
+
+    local scrollingSidebar = Instance.new("ScrollingFrame")
+    scrollingSidebar.Size = UDim2.new(1, -10, 1, -20)
+    scrollingSidebar.Position = UDim2.fromOffset(5, 10)
+    scrollingSidebar.BackgroundTransparency = 1
+    scrollingSidebar.ScrollBarThickness = 2
+    scrollingSidebar.CanvasSize = UDim2.new(0,0,2,0)
+    scrollingSidebar.Parent = sidebar
+
+    local sideList = Instance.new("UIListLayout")
+    sideList.Padding = UDim.new(0, 10)
+    sideList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    sideList.Parent = scrollingSidebar
+
+    -- 4. CONTENT AREA (Items)
+    local content = Instance.new("Frame")
+    content.Name = "ContentArea"
+    content.Size = UDim2.new(1, -230, 1, -120)
+    content.Position = UDim2.fromOffset(210, 100)
+    content.BackgroundTransparency = 1
+    content.Parent = main
+
+    local grid = Instance.new("UIGridLayout")
+    grid.CellSize = UDim2.new(0.3, 0, 0.45, 0)
+    grid.CellPadding = UDim2.new(0.03, 0, 0.03, 0)
+    grid.Parent = content
+
+    local catAttrVal = board:GetAttribute("Category")
+    local currentCategory: string = if typeof(catAttrVal) == "string" then catAttrVal else "Robux"
+
+    local function renderItems(catKey: string)
+        content:ClearAllChildren()
+        grid.Parent = content
+        
+        local category = ShopConfig.Categories[catKey]
+        if not category then return end
+        
+        for _, item in ipairs(category.Items) do
+            local card = Instance.new("Frame")
+            card.BackgroundColor3 = COLORS.BG_GLASS
+            card.BackgroundTransparency = 0.4
+            createCorner(card, 15)
+            createStroke(card, item.CurrencyType == "Robux" and COLORS.GOLD or COLORS.NEON_BLUE, 2)
+            
+            local name = Instance.new("TextLabel")
+            name.Size = UDim2.new(1, -10, 0.4, 0)
+            name.Position = UDim2.fromOffset(5, 5)
+            name.Text = item.Name
+            name.Font = Enum.Font.GothamBold
+            name.TextColor3 = COLORS.WHITE
+            name.TextSize = 18
+            name.TextWrapped = true
+            name.Parent = card
+
+            local buyBtn = Instance.new("TextButton")
+            buyBtn.Size = UDim2.new(0.8, 0, 0.25, 0)
+            buyBtn.Position = UDim2.fromScale(0.1, 0.7)
+            buyBtn.BackgroundColor3 = COLORS.NEON_BLUE
+            buyBtn.Text = item.Price .. (item.CurrencyType == "Robux" and " R$" or " CR")
+            buyBtn.Font = Enum.Font.FredokaOne
+            buyBtn.TextColor3 = COLORS.WHITE
+            buyBtn.TextSize = 14
+            createCorner(buyBtn, 8)
+            applyHover(buyBtn)
+            buyBtn.Parent = card
+
+            if purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true then
+                buyBtn.Text = "LISTO"
+                buyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+            end
+
+            buyBtn.MouseButton1Click:Connect(function()
+                if purchasedItems[item.Id] or player:GetAttribute("Owns_" .. item.Id) == true then return end
+                if item.CurrencyType == "Robux" then
+                    game:GetService("MarketplaceService"):PromptGamePassPurchase(player, item.GamePassId)
+                else
+                    local res, err = BuyItem:InvokeServer(item.Id)
+                    if res then
+                         purchasedItems[item.Id] = true
+                         buyBtn.Text = "LISTO"
+                         buyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+                    else
+                         buyBtn.Text = tostring(err or "ERROR")
+                         task.wait(1)
+                         buyBtn.Text = item.Price .. (item.CurrencyType == "Robux" and " R$" or " CR")
+                    end
+                end
+            end)
+
+            card.Parent = content
+        end
+    end
+
+    -- Sidebar Buttons
+    for key, catData in pairs(ShopConfig.Categories) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0.9, 0, 0, 40)
+        btn.BackgroundColor3 = (key == currentCategory) and COLORS.NEON_BLUE or COLORS.BG_GLASS
+        btn.Text = tostring(catData.Title or key)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextColor3 = COLORS.WHITE
+        createCorner(btn, 10)
+        btn.Parent = scrollingSidebar
+        btn.MouseButton1Click:Connect(function()
+            currentCategory = key
+            renderItems(key)
+        end)
+    end
+
+    renderItems(currentCategory)
+end
+
+-- ==========================================
+-- INICIALIZACIÓN Y DISPATCHER
+-- ==========================================
+local function populateDispatcher(board: BasePart)
+    local categoryAttr = board:GetAttribute("Category")
+    if categoryAttr == "Robux" then
+        populateFuturisticBoard(board)
+    else
+        populateStandardBoard(board)
+    end
+end
+
+local function setup()
+    for _, board in ipairs(CollectionService:GetTagged("TiendaTag")) do
+        local adornee: BasePart? = nil
+        if board:IsA("BasePart") then
+            adornee = board
+        elseif board:IsA("Model") then
+            adornee = board.PrimaryPart or board:FindFirstChild("Display") :: BasePart? or board:FindFirstChildWhichIsA("BasePart", true)
         end
         
-        itemCard.Parent = container
+        if adornee then populateDispatcher(adornee) end
     end
 end
 
--- INICIAR
-local function discoverAndPopulate()
-    local tagged = CollectionService:GetTagged("TiendaTag")
-    for _, board in ipairs(tagged) do
-        task.spawn(populateBoard, board)
-    end
-    
-    -- Fallback por nombre
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if (obj.Name == "ShopBoard" or obj.Name == "TiendaVisual" or string.find(obj.Name, "ShopBoard")) and not CollectionService:HasTag(obj, "TiendaTag") then
-            -- Check if it's a Part or MeshPart to be a valid board
-            if obj:IsA("BasePart") then
-                -- print("DEBUG: Found ShopBoard by fallback name:", obj.Name)
-                task.spawn(populateBoard, obj)
-            end
-        end
-    end
-end
-
--- Refresh all boards
-local function refreshAllBoards()
-    local tagged = CollectionService:GetTagged("TiendaTag")
-    for _, board in ipairs(tagged) do
-        populateBoard(board)
-    end
-    -- Fallback boards
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if (obj.Name == "ShopBoard" or obj.Name == "TiendaVisual" or string.find(obj.Name, "ShopBoard")) and obj:IsA("BasePart") then
-            populateBoard(obj)
-        end
-    end
-end
-
--- Reset on Death/Spawn
-player.CharacterAdded:Connect(function()
-    purchasedItems = {} -- Clear purchased items
-    task.wait(1)
-    refreshAllBoards() -- Redraw to remove "COMPRADO" labels
-end)
-
-task.wait(1.5)
-discoverAndPopulate()
-
-CollectionService:GetInstanceAddedSignal("TiendaTag"):Connect(function(instance)
+CollectionService:GetInstanceAddedSignal("TiendaTag"):Connect(function(inst: Instance)
     task.wait(0.5)
-    populateBoard(instance)
+    local adornee: BasePart? = nil
+    if inst:IsA("BasePart") then
+        adornee = inst
+    elseif inst:IsA("Model") then
+        adornee = inst.PrimaryPart or inst:FindFirstChild("Display") :: BasePart? or inst:FindFirstChildWhichIsA("BasePart", true)
+    end
+    if adornee then populateDispatcher(adornee) end
 end)
+
+player.CharacterAdded:Connect(function()
+    table.clear(purchasedItems)
+    task.wait(1)
+    setup()
+end)
+
+task.wait(2)
+setup()

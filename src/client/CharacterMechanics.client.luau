@@ -11,6 +11,7 @@ local humanoid: Humanoid?
 local rootPart: BasePart?
 
 local hasDoubleJumped = false
+local lastGroundedTime = 0
 
 -- Fly Variables
 local isFlying = false
@@ -115,14 +116,18 @@ local function onJumpRequest()
 	local state = hum:GetState()
 
 	if hasFly then
-		if state == Enum.HumanoidStateType.Freefall and not isFlying then
+		if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) and not isFlying then
 			startFlying()
 		end
 	elseif hasDoubleJump then
-		-- Only allow double jump if in air, not already double jumped, and not currently flying
+		-- Delay to prevent double-jumping instantly on the first jump
+		local timeInAir = tick() - lastGroundedTime
+		
+		-- Only allow double jump if in air for at least 0.2s, not already double jumped, and not currently flying
 		if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) 
 			and not hasDoubleJumped 
 			and not isFlying 
+			and timeInAir > 0.15 -- Un poco menos para que sea responsivo pero seguro
 		then
 			hasDoubleJumped = true
 			
@@ -138,13 +143,13 @@ local function onJumpRequest()
 			end
 
 			-- Apply the jump impulse (slight extra boost for double jump feedback)
-			root.AssemblyLinearVelocity = Vector3.new(vel.X, jumpPower * 1.1, vel.Z)
+			root.AssemblyLinearVelocity = Vector3.new(vel.X, jumpPower * 1.05, vel.Z)
 			
-			-- Visual Feedback: Small burst of particles or sound could go here
+			-- Visual Feedback
 			local p = Instance.new("ParticleEmitter")
 			p.Transparency = NumberSequence.new(0.5, 1)
 			p.Size = NumberSequence.new(0.5, 0)
-			p.Lifetime = NumberRange.new(0.2, 0.5)
+			p.Lifetime = NumberRange.new(0.2, 0.4)
 			p.Rate = 100
 			p.Speed = NumberRange.new(5, 10)
 			p.Parent = root
@@ -167,15 +172,20 @@ local function setupCharacter(newChar: Model)
 	
 	isFlying = false
 	hasDoubleJumped = false
+	lastGroundedTime = tick()
 	
 	cleanFlyPhysics()
 	cleanConnections()
 
 	-- State management connections
-	table.insert(characterConnections, hum.StateChanged:Connect(function(_, new: Enum.HumanoidStateType)
+	table.insert(characterConnections, hum.StateChanged:Connect(function(old, new)
 		if new == Enum.HumanoidStateType.Landed then
 			hasDoubleJumped = false
+			lastGroundedTime = tick()
 			if isFlying then stopFlying() end
+		elseif old == Enum.HumanoidStateType.Landed then
+			-- Salimos del suelo (ya sea saltando o cayendo)
+			lastGroundedTime = tick()
 		end
 	end))
 
@@ -207,5 +217,3 @@ player.CharacterAdded:Connect(setupCharacter)
 if player.Character then
 	setupCharacter(player.Character)
 end
-
-

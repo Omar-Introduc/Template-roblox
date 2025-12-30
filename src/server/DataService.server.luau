@@ -49,8 +49,38 @@ local SESSION_CACHE = {}
 local AUTOSAVE_INTERVAL = 60
 
 local PERMANENT_ITEMS_MAPPING = {
-	["DoubleJump"] = "Owns_DoubleJump"
+	["DoubleJump"] = "Owns_DoubleJump",
+	["PermX2"] = "Owns_PermX2"
 }
+
+-- MarketplaceService Handler (To grant items immediately after purchase)
+game:GetService("MarketplaceService").PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, wasPurchased)
+	if wasPurchased then
+		print(string.format("💰 [Marketplace] %s ha comprado el GamePass %d", player.Name, gamePassId))
+		-- Buscar qué item corresponde a este GamePassId
+		local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+		local ShopConfig = require(Shared:WaitForChild("ShopConfig"))
+		
+		for _, cat in pairs(ShopConfig.Categories) do
+			for _, item in ipairs(cat.Items) do
+				if item.GamePassId == gamePassId then
+					-- Otorgar propiedad permanente
+					local attrName = PERMANENT_ITEMS_MAPPING[item.Id]
+					if attrName then
+						player:SetAttribute(attrName, true)
+						print(string.format("✅ Otorgado atributo %s a %s", attrName, player.Name))
+						
+						-- Aplicar efecto inmediatamente si está vivo
+						if player.Character and ShopService then
+							ShopService.ApplyEffect(player.Character, item)
+						end
+					end
+					break
+				end
+			end
+		end
+	end
+end)
 
 local function createLeaderstats(player, data)
 	local leaderstats = Instance.new("Folder")
@@ -141,20 +171,51 @@ end
 
 -- Remote Invocation
 GetTopPlayers.OnServerInvoke = function(player)
-	if isOfflineMode or not leaderBoardStore then return {} end
+	if isOfflineMode or not leaderBoardStore then return {Top = {}, Personal = {Rank = "---", Score = 0}} end
+	
+	local top = {}
+	local personal = {Rank = "N/A", Score = 0}
+	
+	-- Get Top 10
 	local success, pages = pcall(function() return leaderBoardStore:GetSortedAsync(false, 10) end)
 	if success then
-		local top = {}
 		local entries = pages:GetCurrentPage()
-		for _, data in ipairs(entries) do
+		for i, data in ipairs(entries) do
 			local uid = tonumber(data.key)
 			local name = "Player_" .. uid
 			pcall(function() name = Players:GetNameFromUserIdAsync(uid) end)
 			table.insert(top, {Name = name, Score = data.value})
+			
+			if uid == player.UserId then
+				personal.Rank = i
+				personal.Score = data.value
+			end
 		end
-		return top
 	end
-	return {}
+
+	-- If not found in top 10, search in top 100 for personal rank
+	if personal.Rank == "N/A" then
+		local successExtended, pagesExtended = pcall(function() return leaderBoardStore:GetSortedAsync(false, 100) end)
+		if successExtended then
+			local entries = pagesExtended:GetCurrentPage()
+			for i, data in ipairs(entries) do
+				if tonumber(data.key) == player.UserId then
+					personal.Rank = i
+					personal.Score = data.value
+					break
+				end
+			end
+		end
+	end
+
+	-- Fallback for score if still not found (might not be in DataStore yet)
+	if personal.Score == 0 then
+		local ls = player:FindFirstChild("leaderstats")
+		local cr = ls and ls:FindFirstChild("CR")
+		if cr then personal.Score = cr.Value end
+	end
+
+	return {Top = top, Personal = personal}
 end
 
 -- Events
