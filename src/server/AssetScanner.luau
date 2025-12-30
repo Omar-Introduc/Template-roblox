@@ -21,28 +21,46 @@ function AssetScanner.Init()
     end
 
     -- 2. Lógica para la Plataforma_1
+    local existingP1 = estructuras and estructuras:FindFirstChild("Plataforma_1")
     local marcador = estructuras and estructuras:FindFirstChild("SpawnPlataforma_1")
     
-    if marcador and template then
+    if existingP1 then
+        print("ℹ️ [AssetScanner] 'Plataforma_1' ya existe en el mapa. Saltando clonación.")
+        if not CollectionService:HasTag(existingP1, "PlataformaCaida") then
+            CollectionService:AddTag(existingP1, "PlataformaCaida")
+        end
+        MapManager.AddPlatform(existingP1)
+        if marcador then marcador:Destroy() end
+    elseif marcador and template then
         -- Clonamos el molde (Prefab)
         local p1 = template:Clone()
         p1.Name = "Plataforma_1"
         
-        -- Usamos GetPivot para copiar la posición EXACTA del marcador
-        p1:PivotTo(marcador:GetPivot())
+        -- Usamos la POSICIÓN del marcador pero mantenemos la ROTACIÓN del prefab original
+        local marcadorPivot = marcador:GetPivot()
+        local prefabRotation = template:GetPivot().Rotation
+        p1:PivotTo(CFrame.new(marcadorPivot.Position) * prefabRotation)
         
+        -- Verificar PrimaryPart para compatibilidad
+        if p1:IsA("Model") and not p1.PrimaryPart then
+            p1.PrimaryPart = p1:FindFirstChildWhichIsA("BasePart", true)
+        end
+
         p1.Parent = estructuras
+        
+        -- IMPORTANTE: Añadir Tag para que GameManager lo active
+        CollectionService:AddTag(p1, "PlataformaCaida")
         
         -- Registramos en el MapManager
         MapManager.AddPlatform(p1)
         
         -- Eliminamos el marcador de Studio
         marcador:Destroy() 
-        print("✅ Plataforma_1 generada exitosamente desde ServerStorage/Prefabs.")
+        print("✅ Plataforma_1 generada exitosamente con Lógica (Tag añadido).")
     else
         -- Evitar warn si ya existe la plataforma (re-escaneo manual por ejemplo)
         if not estructuras:FindFirstChild("Plataforma_1") then
-            warn("⚠️ Error Crítico: No se encontró 'SpawnPlataforma_1' o 'PlataformaTemplate' en la carpeta Prefabs.")
+            warn("⚠️ Error Crítico: No se encontró 'SpawnPlataforma_1' o 'PlataformaTemplate' en ServerStorage/Prefabs.")
         end
     end
 

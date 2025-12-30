@@ -28,6 +28,20 @@ if not PlatformTriggered then
 	PlatformTriggered.Parent = EventsFolder
 end
 
+local function getPlatformMainPart(platform: Instance): BasePart?
+    if platform:IsA("BasePart") then
+        return platform
+    elseif platform:IsA("Model") then
+        if platform.PrimaryPart then
+            return platform.PrimaryPart
+        end
+        -- Fallback: Buscar "TouchPart", "Main" o la primera parte que encontremos
+        local fallback = platform:FindFirstChild("TouchPart", true) or platform:FindFirstChild("Main", true) or platform:FindFirstChildWhichIsA("BasePart", true)
+        return fallback :: BasePart?
+    end
+    return nil
+end
+
 local RequestPointsEvent = EventsFolder:FindFirstChild("RequestPlatformPoints") --[[@as RemoteEvent]]
 if not RequestPointsEvent then
 	RequestPointsEvent = Instance.new("RemoteEvent")
@@ -112,12 +126,7 @@ end
 function GameManager.ValidatePointRequest(player: Player, platform: Instance)
 	if not platform then return false, "Invalid Platform" end
 	
-	local mainPart: BasePart?
-	if platform:IsA("Model") then
-		mainPart = platform.PrimaryPart
-	elseif platform:IsA("BasePart") then
-		mainPart = platform
-	end
+	local mainPart = getPlatformMainPart(platform)
 	
 	if not mainPart then
 		return false, "Invalid Platform Type"
@@ -158,12 +167,7 @@ RequestPointsEvent.OnServerEvent:Connect(function(player: Player, platform: Inst
 	print(string.format("DEBUG: Server received point request from %s for %s", player.Name, platform.Name))
 	local valid, reason = GameManager.ValidatePointRequest(player, platform)
 	if valid then
-		local mainPart: BasePart?
-		if platform:IsA("Model") then
-			mainPart = platform.PrimaryPart
-		elseif platform:IsA("BasePart") then
-			mainPart = platform
-		end
+		local mainPart = getPlatformMainPart(platform)
 		
 		if mainPart then
 			GameManager.otorgarPuntos(player, platform.Name, mainPart.Position)
@@ -233,12 +237,7 @@ activatePlatform = function(platform: Instance)
 	if platform:GetAttribute("IsActive") then return end
 	platform:SetAttribute("IsActive", true)
 
-	local mainPart: BasePart? = nil
-	if platform:IsA("Model") then
-		mainPart = platform.PrimaryPart
-	elseif platform:IsA("BasePart") then
-		mainPart = platform
-	end
+	local mainPart = getPlatformMainPart(platform)
 	
 	if not mainPart then return end
 
