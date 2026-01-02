@@ -1,113 +1,149 @@
 -- src/client/HUDController.client.luau
 --!strict
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local UIComponents = require(game.ReplicatedStorage.Client.UIComponents) -- Adjusted path based on where UIComponents is (src/client maps to ReplicatedStorage.Client usually? Wait, src/client scripts run on client but modules need to be required from where they are replicated. src/client is usually PlayerScripts or StarterPlayerScripts, not ReplicatedStorage. But I created UIComponents in src/client. If the user's build system replicates src/client to PlayerScripts, I can require it relatively if it was a ModuleScript in the same folder, but HUDController is a LocalScript. LocalScripts can require ModuleScripts.
+-- Wait, I created src/client/UIComponents.luau.
+-- In Roblox, files in src/client usually go to StarterPlayerScripts.
+-- So I should require it from there? Or maybe I should have put it in src/shared if I wanted it in ReplicatedStorage.
+-- However, since both are in src/client, let's assume they are siblings in the runtime environment (PlayerScripts).
+-- I will use `script.Parent:WaitForChild("UIComponents")` if possible, or assume standard Rojo structure where `src/client` -> `Players.LocalPlayer.PlayerScripts`.
+
 local player = Players.LocalPlayer :: Player
+local UITheme = require(ReplicatedStorage.Shared.UITheme)
+
+-- We need to locate UIComponents. Since it's in src/client, it should be in PlayerScripts alongside this script.
+local UIComponentsModule = script.Parent:WaitForChild("UIComponents")
+local UIComponents = require(UIComponentsModule)
 
 if not player then
 	return
 end
 
--- Esperar a que se carguen los leaderstats
+-- Wait for leaderstats
 local leaderstats = player:WaitForChild("leaderstats", 10) :: Folder?
 if not leaderstats then
-	warn("HUDController: No se encontró 'leaderstats'. El HUD no se iniciará.")
+	warn("HUDController: 'leaderstats' not found.")
 	return
 end
 
 local crStatInstance = (leaderstats :: Folder):WaitForChild("CR", 10)
-
 if not crStatInstance or not crStatInstance:IsA("IntValue") then
-	warn("HUDController: No se encontró 'leaderstats' o 'CR'. El HUD no se iniciará.")
+	warn("HUDController: 'CR' stat not found.")
 	return
 end
-
 local crStat = crStatInstance :: IntValue
 
--- Crear la Interfaz (ScreenGui)
-local gui = Instance.new("ScreenGui") :: ScreenGui
-gui.Name = "MoneyHUD"
+-- Create Main HUD GUI
+local gui = Instance.new("ScreenGui")
+gui.Name = "GameHUD"
 gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui") :: PlayerGui
+gui.Parent = player:WaitForChild("PlayerGui")
 
--- Crear el contenedor/fondo (Money)
-local moneyFrame = Instance.new("Frame") :: Frame
-moneyFrame.Name = "MoneyContainer"
-moneyFrame.Size = UDim2.new(0, 200, 0, 50)
-moneyFrame.Position = UDim2.new(0, 20, 1, -70) -- Esquina inferior izquierda
-moneyFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-moneyFrame.BackgroundTransparency = 0.5
-moneyFrame.BorderSizePixel = 0
-moneyFrame.Parent = gui
+--------------------------------------------------------------------------------
+-- 1. Money Display (Top Left or Bottom Left)
+--------------------------------------------------------------------------------
+local moneyContainer = UIComponents.CreateContainer({
+	Name = "MoneyContainer",
+	Size = UDim2.new(0, 180, 0, 45),
+	Position = UDim2.new(0, 20, 1, -65),
+	BackgroundColor3 = UITheme.Colors.BackgroundPanel,
+	Transparency = 0.2,
+	Parent = gui
+})
 
-local uiCorner = Instance.new("UICorner") :: UICorner
-uiCorner.CornerRadius = UDim.new(0, 8)
-uiCorner.Parent = moneyFrame
+-- Icon (Simple text circle for now, or Image if available)
+local moneyIcon = Instance.new("Frame")
+moneyIcon.Size = UDim2.new(0, 30, 0, 30)
+moneyIcon.Position = UDim2.new(0, 8, 0.5, -15)
+moneyIcon.BackgroundColor3 = UITheme.Colors.AccentOrange
+moneyIcon.BorderSizePixel = 0
+local iconCorner = Instance.new("UICorner")
+iconCorner.CornerRadius = UDim.new(1,0)
+iconCorner.Parent = moneyIcon
+moneyIcon.Parent = moneyContainer
 
--- Texto del dinero
-local moneyLabel = Instance.new("TextLabel") :: TextLabel
-moneyLabel.Name = "ValueLabel"
-moneyLabel.Size = UDim2.new(1, -20, 1, 0)
-moneyLabel.Position = UDim2.new(0, 10, 0, 0)
-moneyLabel.BackgroundTransparency = 1
-moneyLabel.Font = Enum.Font.FredokaOne
-moneyLabel.TextSize = 24
-moneyLabel.TextColor3 = Color3.fromRGB(0, 255, 255) -- Cian Neón
-moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
-moneyLabel.Text = "CR: " .. tostring(crStat.Value)
-moneyLabel.Parent = moneyFrame
+local iconLabel = UIComponents.CreateLabel({
+	Text = "$",
+	Size = UDim2.new(1,0,1,0),
+	TextColor3 = Color3.new(0,0,0),
+	Font = UITheme.Fonts.Header,
+	TextSize = 20,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	Parent = moneyIcon
+})
 
--- Buffs Container (Barra de Efectos Activos)
-local buffsContainer = Instance.new("Frame") :: Frame
+-- Value Text
+local moneyLabel = UIComponents.CreateLabel({
+	Name = "ValueLabel",
+	Text = tostring(crStat.Value),
+	Size = UDim2.new(1, -50, 1, 0),
+	Position = UDim2.new(0, 45, 0, 0),
+	TextColor3 = UITheme.Colors.TextHighlight,
+	Font = UITheme.Fonts.Header,
+	TextSize = 24,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = moneyContainer
+})
+
+local function updateMoney()
+	moneyLabel.Text = tostring(crStat.Value)
+	-- Pulse animation
+	local tween = TweenService:Create(moneyLabel, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true), {
+		TextColor3 = Color3.new(1,1,1)
+	})
+	tween:Play()
+end
+crStat.Changed:Connect(updateMoney)
+
+
+--------------------------------------------------------------------------------
+-- 2. Buffs Display (Vertical Stack, Middle Left or Right)
+--------------------------------------------------------------------------------
+local buffsContainer = Instance.new("Frame")
 buffsContainer.Name = "BuffsContainer"
-buffsContainer.Size = UDim2.new(0, 400, 0, 40)
-buffsContainer.Position = UDim2.new(0, 20, 1, -120) -- Arriba del dinero
+buffsContainer.Size = UDim2.new(0, 220, 0, 300)
+buffsContainer.Position = UDim2.new(0, 20, 0.5, -150) -- Middle Left
 buffsContainer.BackgroundTransparency = 1
 buffsContainer.Parent = gui
 
-local buffsLayout = Instance.new("UIListLayout") :: UIListLayout
-buffsLayout.FillDirection = Enum.FillDirection.Horizontal
-buffsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-buffsLayout.Padding = UDim.new(0, 10)
-buffsLayout.Parent = buffsContainer
+local listLayout = Instance.new("UIListLayout")
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Padding = UDim.new(0, 8)
+listLayout.Parent = buffsContainer
 
--- Cache de labels para no recrear
-local activeBuffLabels: { [string]: TextLabel } = {}
+local activeBuffFrames = {} -- [AttributeName] = Frame
 
--- Función para actualizar el dinero
-local function updateMoney()
-	moneyLabel.Text = "CR: " .. tostring(crStat.Value)
-end
-crStat.Changed:Connect(updateMoney)
-updateMoney()
+local buffConfig = {
+	["Buff_Fly_End"] = { Name = "FLY", Color = UITheme.Colors.AccentCyan },
+	["Buff_God_End"] = { Name = "GOD MODE", Color = UITheme.Colors.AccentHighlight }, -- Note: using text highlight gold?
+	["Buff_Multiplier_End"] = { Name = "2X POINTS", Color = UITheme.Colors.AccentOrange },
+	["Buff_Gravity_End"] = { Name = "LOW GRAVITY", Color = UITheme.Colors.AccentPurple },
+	["Buff_DoubleJump"] = { Name = "DOUBLE JUMP", Color = UITheme.Colors.AccentGreen },
+	["PointMultiplier"] = { Name = "MULTIPLIER", Color = UITheme.Colors.AccentOrange },
+}
+-- Fix God Mode Color reference if missing
+if not buffConfig["Buff_God_End"].Color then buffConfig["Buff_God_End"].Color = UITheme.Colors.TextHighlight end
 
--- Función auxiliar para formatear tiempo
+
 local function formatTime(seconds: number): string
 	local m = math.floor(seconds / 60)
 	local s = math.floor(seconds % 60)
-	return string.format("%02d:%02d", m, s)
+	return string.format("%d:%02d", m, s)
 end
 
--- Mapa de nombres bonitos
-local buffNames: { [string]: string } = {
-	["Buff_Fly_End"] = "VUELO",
-	["Buff_God_End"] = "INMORTAL",
-	["Buff_Multiplier_End"] = "PUNTOS X2",
-	["Buff_Gravity_End"] = "GRAVEDAD",
-	["Buff_DoubleJump"] = "DOBLE SALTO"
-}
-
--- Update Buffs loop
 RunService.Heartbeat:Connect(function()
 	local character = player.Character
 	if not character then return end
 
 	local now = os.time()
 	local attributes = character:GetAttributes()
-	local foundBuffs: { [string]: boolean } = {}
+	local currentBuffs = {}
 
 	for name, val in pairs(attributes) do
-		-- Whitelist/Filter logic
 		local isBuff = string.sub(name, 1, 5) == "Buff_"
 		local isMultiplier = name == "PointMultiplier"
 		local isShield = name == "HasShield"
@@ -117,106 +153,90 @@ RunService.Heartbeat:Connect(function()
 			local timeLeft = 0
 			local isTimer = false
 			local displayValue = ""
+			local maxTime = 60 -- Default fallback for progress bar
 
 			if typeof(val) == "number" then
-				local v = val :: number
-				-- Check if it is a Timer (ends in _End)
 				if string.sub(name, -4) == "_End" then
-					if v > now then
-						timeLeft = v - now
+					if val > now then
+						timeLeft = val - now
 						isTimer = true
+						-- Try to guess max time? Hard without config.
+						-- We will just show text mostly.
 					else
-						continue -- Expired timer
+						continue
 					end
 				else
-					-- It's a Stat (Speed, Jump, Multiplier)
-					displayValue = tostring(v)
-					if isMultiplier then displayValue = "x" .. displayValue end
+					displayValue = "x" .. tostring(val)
 				end
-			elseif typeof(val) == "boolean" then
-				local v = val :: boolean
-				if v == true then
-					displayValue = "ON"
-				else
-					continue
-				end
+			elseif typeof(val) == "boolean" and val == true then
+				displayValue = "ON"
 			else
 				continue
 			end
 
-			foundBuffs[name] = true
+			currentBuffs[name] = true
 
-			-- Crear/Actualizar UI
-			local existingLabel = activeBuffLabels[name]
-			local finalLabel: TextLabel
+			-- Create or Update UI
+			local frame = activeBuffFrames[name]
+			local config = buffConfig[name]
+			local displayName = config and config.Name or name:gsub("Buff_", ""):gsub("_End", "")
+			local displayColor = config and config.Color or UITheme.Colors.AccentCyan
 
-			if not existingLabel then
-				local frame = Instance.new("Frame") :: Frame
-				frame.Name = name
-				frame.Size = UDim2.new(0, 140, 0, 30)
-				frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-				frame.BackgroundTransparency = 0.6
+			if not frame then
+				-- Create new Buff Frame
+				frame = UIComponents.CreateContainer({
+					Name = name,
+					Size = UDim2.new(1, 0, 0, 36),
+					BackgroundColor3 = Color3.new(0,0,0),
+					Transparency = 0.6,
+					Parent = buffsContainer
+				})
 				
-				local grad = Instance.new("UIGradient") :: UIGradient
-				grad.Color = ColorSequence.new{
-					ColorSequenceKeypoint.new(0, Color3.fromRGB(40,40,40)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(0,0,0))
-				}
-				grad.Parent = frame
+				-- Icon/Color Strip
+				local strip = Instance.new("Frame")
+				strip.Size = UDim2.new(0, 4, 1, -8)
+				strip.Position = UDim2.new(0, 6, 0, 4)
+				strip.BackgroundColor3 = displayColor
+				strip.BorderSizePixel = 0
+				local corner = Instance.new("UICorner")
+				corner.CornerRadius = UDim.new(1,0)
+				corner.Parent = strip
+				strip.Parent = frame
 
-				local corner = Instance.new("UICorner") :: UICorner
-				corner.CornerRadius = UDim.new(0, 6)
-				corner.Parent = frame
+				-- Text
+				local label = UIComponents.CreateLabel({
+					Name = "Text",
+					Text = displayName,
+					Size = UDim2.new(1, -20, 1, 0),
+					Position = UDim2.new(0, 15, 0, 0),
+					TextColor3 = UITheme.Colors.TextPrimary,
+					Font = UITheme.Fonts.Bold,
+					TextSize = 14,
+					Parent = frame
+				})
 
-				local newLabel = Instance.new("TextLabel") :: TextLabel
-				newLabel.Size = UDim2.new(1, -10, 1, 0)
-				newLabel.Position = UDim2.new(0, 5, 0, 0)
-				newLabel.BackgroundTransparency = 1
-				newLabel.Font = Enum.Font.GothamBold
-				newLabel.TextColor3 = Color3.new(1, 1, 1)
-				newLabel.TextSize = 14
-				newLabel.TextXAlignment = Enum.TextXAlignment.Left
-				newLabel.Parent = frame
-
-				frame.Parent = buffsContainer
-				activeBuffLabels[name] = newLabel
-				finalLabel = newLabel
-			else
-				finalLabel = existingLabel
+				activeBuffFrames[name] = frame
 			end
 
-			-- Custom Naming Logic
-			local cleanName = name
-			if buffNames[name] then
-				cleanName = buffNames[name]
-			elseif isMultiplier then
-				cleanName = "MULTIPLIER"
-			elseif string.sub(name, 1, 5) == "Buff_" then
-				cleanName = string.sub(name, 6):gsub("_End", "")
-			end
-			
-			-- Final Text Logic
+			-- Update Text
+			local label = frame:FindFirstChild("Text") :: TextLabel
 			if isTimer then
-				finalLabel.Text = cleanName .. " " .. formatTime(timeLeft)
-				finalLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+				label.Text = displayName .. "  " .. formatTime(timeLeft)
+				label.TextColor3 = UITheme.Colors.TextPrimary
 			else
-				finalLabel.Text = cleanName .. " " .. displayValue
-				finalLabel.TextColor3 = Color3.fromRGB(50, 255, 100)
+				label.Text = displayName .. "  " .. displayValue
+				label.TextColor3 = displayColor
 			end
 		end
 	end
 
-	-- Limpiar UI
-	for name, label in pairs(activeBuffLabels) do
-		if not foundBuffs[name] then
-			local labelParent = label.Parent
-			if labelParent then
-				labelParent:Destroy()
-			end
-			activeBuffLabels[name] = nil
+	-- Cleanup
+	for name, frame in pairs(activeBuffFrames) do
+		if not currentBuffs[name] then
+			frame:Destroy()
+			activeBuffFrames[name] = nil
 		end
 	end
 end)
 
-print("HUDController: Interfaz actualizada cargada.")
-
+print("HUDController: Enhanced UI Loaded.")
