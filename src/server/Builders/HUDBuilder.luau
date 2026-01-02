@@ -3,8 +3,8 @@ local HUDBuilder = {}
 HUDBuilder.Name = "HUD Builder"
 
 function HUDBuilder.Build()
-	print("   -> HUDBuilder aún no implementado completamente. (Placeholder)")
-	-- Aquí iría la lógica para construir el HUD si fuera necesario
+	warn("HUDBuilder is DEPRECATED. The HUD is now generated at runtime by src/client/HUDController.client.luau using UIComponents.")
+	-- No operation
 end
 
 return HUDBuilder
